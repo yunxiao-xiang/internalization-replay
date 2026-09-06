@@ -1,0 +1,24 @@
+END-OF-DAY SUMMARY — AAPL 2026-08-17
+==================================================
+Client orders:                500
+Client order shares:          524,000
+
+Client shares filled by capacity/venue:
+  AGENCY     CROSS          1,600
+  AGENCY     MARKET       232,200
+  PRINCIPAL  INTERNAL     243,300
+  TOTAL                   477,100
+
+Order dispositions:
+  CANCELLED                       19
+  EXPIRED                         17
+  FILLED                         464
+
+Shares expired (DAY):         18,800
+Shares cancelled (IOC):       28,100
+Accounting check:             filled 477,100 + unfilled 46,900 = 524,000 of 524,000
+
+Firm hedge/unwind trades:     20 (21,300 shares)
+Firm end-of-day position:     0 shares
+Firm realized principal P&L:  $14,396.00
+Client price improvement:     $2,216.00 (internal + cross fills vs the touch)

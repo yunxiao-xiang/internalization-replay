@@ -1,0 +1,135 @@
+"""Independent compliance and accounting audit of the engine's outputs.
+
+Re-reads the raw inputs and the produced CSVs (no engine code paths besides
+the loaders) and verifies:
+  1. Every client fill is priced at or within the prevailing NBBO at fill time,
+     and never violates the client's limit price.
+  2. The recorded NBBO on each fill matches the quote tape.
+  3. Fills are chronological and no share of any order is over-filled.
+  4. Reconstructed firm position (principal fills + firm trades) ends at zero,
+     and the recomputed principal P&L matches the summary.
+  5. Firm trades hit the touch: buys at the ask, sells at the bid.
+
+Usage: python3 validate.py  (after python3 main.py)
+"""
+from __future__ import annotations
+
+import csv
+import sys
+from bisect import bisect_right
+from datetime import datetime
+
+from internalizer.data import load_orders, load_quotes
+from internalizer.models import to_cents
+
+QUOTES = "data/aapl_quotes_20260817.csv"
+ORDERS = "data/client_orders_20260817.csv"
+
+
+def fail(msg: str) -> None:
+    print(f"FAIL: {msg}")
+    sys.exit(1)
+
+
+def main() -> int:
+    quotes = load_quotes(QUOTES)
+    orders = {o.order_id: o for o in load_orders(ORDERS)}
+    qts = [q.ts for q in quotes]
+    # all quotes sharing an exact timestamp (engine may act on any of them)
+    at_ts: dict[datetime, list] = {}
+    for q in quotes:
+        at_ts.setdefault(q.ts, []).append(q)
+
+    with open("out/fills.csv") as f:
+        fills = list(csv.DictReader(f))
+    with open("out/firm_trades.csv") as f:
+        firm = list(csv.DictReader(f))
+
+    position = 0
+    cash = 0
+    filled: dict[str, int] = {}
+    prev_ts = None
+    for row in fills:
+        ts = datetime.fromisoformat(row["timestamp"])
+        px = to_cents(row["price"])
+        qty = int(row["quantity"])
+        rb, ra = to_cents(row["nbbo_bid"]), to_cents(row["nbbo_ask"])
+        o = orders[row["order_id"]]
+
+        if prev_ts and ts < prev_ts:
+            fail(f"{row['fill_id']} out of time order")
+        prev_ts = ts
+
+        # 1. price within the recorded NBBO and the client's limit
+        if not (rb <= px <= ra):
+            fail(f"{row['fill_id']} price {px} outside recorded NBBO {rb}/{ra}")
+        if o.limit is not None:
+            if o.side == "BUY" and px > o.limit:
+                fail(f"{row['fill_id']} buy above limit")
+            if o.side == "SELL" and px < o.limit:
+                fail(f"{row['fill_id']} sell below limit")
+
+        # 2. recorded NBBO must be the prevailing quote (the last at or before
+        #    the fill time, or any quote sharing its exact timestamp when the
+        #    tape prints several in one millisecond)
+        i = bisect_right(qts, ts)
+        if i == 0:
+            fail(f"{row['fill_id']} before first quote")
+        prevailing = quotes[i - 1]
+        candidates = [prevailing] + at_ts.get(ts, [])
+        if not any(q.bid == rb and q.ask == ra for q in candidates):
+            fail(f"{row['fill_id']} recorded NBBO {rb}/{ra} not on tape at {ts}")
+
+        # 3. accounting
+        filled[o.order_id] = filled.get(o.order_id, 0) + qty
+        if filled[o.order_id] > o.quantity:
+            fail(f"{o.order_id} over-filled")
+
+        # 4. firm side of principal fills
+        if row["capacity"] == "PRINCIPAL":
+            if o.side == "BUY":
+                position -= qty
+                cash += qty * px
+            else:
+                position += qty
+                cash -= qty * px
+
+    for row in firm:
+        ts = datetime.fromisoformat(row["timestamp"])
+        px = to_cents(row["price"])
+        qty = int(row["quantity"])
+        i = bisect_right(qts, ts)
+        prevailing = quotes[i - 1]
+        candidates = [prevailing] + at_ts.get(ts, [])
+        # 5. firm trades pay the spread: buy at ask, sell at bid
+        if row["side"] == "BUY":
+            if not any(q.ask == px for q in candidates):
+                fail(f"{row['trade_id']} firm buy not at prevailing ask")
+            position += qty
+            cash -= qty * px
+        else:
+            if not any(q.bid == px for q in candidates):
+                fail(f"{row['trade_id']} firm sell not at prevailing bid")
+            position -= qty
+            cash += qty * px
+
+    if position != 0:
+        fail(f"reconstructed EOD position {position} != 0")
+
+    with open("out/summary.txt") as f:
+        summary = f.read()
+    pnl = f"${cash / 100:,.2f}"
+    if pnl not in summary:
+        fail(f"recomputed P&L {pnl} not found in summary")
+
+    cross = [r for r in fills if r["venue"] == "CROSS"]
+    if len(cross) % 2 != 0:
+        fail("cross fills must come in pairs")
+
+    print(f"OK: {len(fills)} fills, {len(firm)} firm trades all compliant; "
+          f"EOD position 0; P&L {pnl} matches summary.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
