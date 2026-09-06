@@ -3,12 +3,13 @@
 Usage:
     python3 main.py [quotes_csv orders_csv [out_dir]]
 
-Defaults: data/aapl_quotes_20260817.csv, data/client_orders_20260817.csv, out/
+Defaults come from config.py.
 """
 from __future__ import annotations
 
 import sys
 
+import config
 from internalizer.data import load_orders, load_quotes
 from internalizer.engine import Engine
 from internalizer.reporting import Reporter
@@ -29,9 +30,13 @@ def merge_events(quotes, orders):
 
 
 def main(argv: list[str]) -> int:
-    quotes_path = argv[1] if len(argv) > 1 else "data/aapl_quotes_20260817.csv"
-    orders_path = argv[2] if len(argv) > 2 else "data/client_orders_20260817.csv"
-    out_dir = argv[3] if len(argv) > 3 else "out"
+    quotes_path = argv[1] if len(argv) > 1 else config.QUOTES_CSV
+    orders_path = argv[2] if len(argv) > 2 else config.ORDERS_CSV
+    if len(argv) > 3:
+        fills_csv, firm_csv, summary_txt = config.out_paths(argv[3])
+    else:
+        fills_csv, firm_csv, summary_txt = (
+            config.FILLS_CSV, config.FIRM_TRADES_CSV, config.SUMMARY_TXT)
 
     quotes = load_quotes(quotes_path)
     orders = load_orders(orders_path)
@@ -45,9 +50,10 @@ def main(argv: list[str]) -> int:
             engine.on_order(ev)
     engine.on_close()
 
-    summary = reporter.write_outputs(out_dir, engine.position, engine.cash, orders)
+    summary = reporter.write_outputs(fills_csv, firm_csv, summary_txt,
+                                     engine.position, engine.cash, orders)
     print(summary)
-    print(f"Wrote {out_dir}/fills.csv, {out_dir}/firm_trades.csv, {out_dir}/summary.txt")
+    print(f"Wrote {fills_csv}, {firm_csv}, {summary_txt}")
     return 0
 
 

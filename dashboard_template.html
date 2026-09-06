@@ -1,0 +1,485 @@
+<title>AAPL Internalization Replay</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --surface-2: #f3f2ef;
+  --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,0.10);
+  --internal: #2a78d6; --cross: #1baf7a; --market: #eb6834;
+  --up: #006300; --down: #d03b3b;
+  --band: rgba(42,120,214,0.07);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --surface-2: #232322;
+    --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+    --internal: #3987e5; --cross: #199e70; --market: #d95926;
+    --up: #0ca30c; --down: #e66767;
+    --band: rgba(57,135,229,0.10);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --surface-2: #232322;
+  --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+  --internal: #3987e5; --cross: #199e70; --market: #d95926;
+  --up: #0ca30c; --down: #e66767;
+  --band: rgba(57,135,229,0.10);
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--page); color: var(--ink);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+  margin: 0; padding: 18px clamp(12px, 2.5vw, 28px) 40px;
+}
+.mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+.tnum { font-variant-numeric: tabular-nums; }
+
+header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px 16px; margin-bottom: 14px; }
+header h1 { font-size: 17px; font-weight: 650; margin: 0; letter-spacing: .01em; }
+header .sub { color: var(--muted); font-size: 12.5px; }
+
+.panel { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+
+/* ---- transport / NBBO strip ---- */
+.strip { display: flex; flex-wrap: wrap; align-items: stretch; gap: 12px; margin-bottom: 12px; }
+.tile { padding: 8px 14px 9px; min-width: 108px; }
+.tile .lbl { font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.tile .val { font-size: 21px; font-weight: 620; margin-top: 1px; }
+.tile .sub2 { font-size: 11px; color: var(--ink-2); margin-top: 1px; }
+.transport { flex: 1 1 340px; display: flex; align-items: center; gap: 10px; padding: 8px 14px; }
+.transport button {
+  background: var(--surface-2); color: var(--ink); border: 1px solid var(--border);
+  border-radius: 6px; font: 600 13px system-ui, sans-serif; padding: 6px 14px; cursor: pointer;
+}
+.transport button:hover { border-color: var(--muted); }
+.transport button:focus-visible, .transport select:focus-visible, input[type=range]:focus-visible { outline: 2px solid var(--internal); outline-offset: 1px; }
+.transport select {
+  background: var(--surface-2); color: var(--ink); border: 1px solid var(--border);
+  border-radius: 6px; font: 12.5px system-ui, sans-serif; padding: 5px 6px;
+}
+.transport input[type=range] { flex: 1; accent-color: var(--internal); min-width: 120px; }
+#clock { font-size: 19px; font-weight: 620; min-width: 118px; text-align: right; }
+
+/* ---- chart ---- */
+.chartwrap { position: relative; margin-bottom: 12px; }
+#chart { display: block; width: 100%; height: 340px; border-radius: 8px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; padding: 8px 14px 10px; font-size: 12px; color: var(--ink-2); }
+.key { display: inline-flex; align-items: center; gap: 6px; }
+.dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.xmark { color: var(--muted); font-weight: 700; }
+#tooltip {
+  position: absolute; pointer-events: none; display: none; z-index: 5;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+  box-shadow: 0 3px 14px rgba(0,0,0,.18); padding: 7px 10px; font-size: 12px; max-width: 240px;
+}
+#tooltip .t-time { color: var(--muted); font-size: 11px; }
+
+/* ---- lower grid ---- */
+.grid3 { display: grid; grid-template-columns: 1.15fr .85fr 1.3fr; gap: 12px; align-items: start; }
+@media (max-width: 1080px) { .grid3 { grid-template-columns: 1fr; } }
+section h2 {
+  font-size: 11.5px; text-transform: uppercase; letter-spacing: .09em; color: var(--muted);
+  margin: 0; padding: 10px 14px 8px; border-bottom: 1px solid var(--border);
+  display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
+}
+section h2 .count { color: var(--ink-2); letter-spacing: 0; text-transform: none; font-weight: 500; }
+.scroll { overflow: auto; max-height: 380px; }
+table { border-collapse: collapse; width: 100%; font-size: 12.5px; }
+th {
+  text-align: right; font-weight: 600; color: var(--muted); font-size: 10.5px;
+  text-transform: uppercase; letter-spacing: .06em; padding: 7px 10px 5px;
+  position: sticky; top: 0; background: var(--surface); border-bottom: 1px solid var(--border);
+}
+th:first-child, td:first-child { text-align: left; }
+td { padding: 4.5px 10px; text-align: right; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+tr:last-child td { border-bottom: none; }
+.empty { color: var(--muted); padding: 22px 14px; font-size: 12.5px; text-align: center; }
+
+.chip { display: inline-block; padding: 1px 7px 2px; border-radius: 9px; font-size: 10.5px; font-weight: 650; letter-spacing: .04em; }
+.chip.I { background: color-mix(in srgb, var(--internal) 16%, transparent); color: var(--internal); }
+.chip.C { background: color-mix(in srgb, var(--cross) 16%, transparent); color: var(--cross); }
+.chip.M { background: color-mix(in srgb, var(--market) 16%, transparent); color: var(--market); }
+.chip.side { background: var(--surface-2); color: var(--ink-2); }
+.spreadrow td { text-align: center; color: var(--muted); font-size: 11px; background: var(--surface-2); padding: 3px; border-bottom: 1px solid var(--border); }
+
+/* ---- principal panel ---- */
+.pstats { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 10px; padding: 10px 14px 4px; }
+.pstats .lbl { font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.pstats .val { font-size: 20px; font-weight: 620; }
+.pstats .val.small { font-size: 15px; }
+#posspark { display: block; width: 100%; height: 96px; padding: 4px 8px 8px; }
+.pnl-pos { color: var(--up); } .pnl-neg { color: var(--down); }
+.ftrades td { font-size: 12px; }
+.footnote { color: var(--muted); font-size: 11px; padding: 6px 14px 10px; }
+</style>
+
+<header>
+  <h1>AAPL Internalization Replay</h1>
+  <span class="sub">2026-08-17 · 09:30–16:00 ET · 51,824 quotes · 500 client orders</span>
+</header>
+
+<div class="strip">
+  <div class="panel transport">
+    <button id="play" aria-label="Play or pause replay">▶ Play</button>
+    <select id="speed" aria-label="Replay speed">
+      <option value="60">60×</option>
+      <option value="300" selected>300×</option>
+      <option value="1200">1200×</option>
+      <option value="6000">6000×</option>
+    </select>
+    <input type="range" id="scrub" min="0" max="23400000" value="0" step="100" aria-label="Replay time">
+    <div id="clock" class="mono tnum">09:30:00.000</div>
+  </div>
+  <div class="panel tile"><div class="lbl">Best bid</div><div class="val tnum" id="bidv">—</div><div class="sub2 tnum" id="bids">&nbsp;</div></div>
+  <div class="panel tile"><div class="lbl">Best ask</div><div class="val tnum" id="askv">—</div><div class="sub2 tnum" id="asks">&nbsp;</div></div>
+  <div class="panel tile"><div class="lbl">Spread</div><div class="val tnum" id="sprv">—</div><div class="sub2" id="sprn">&nbsp;</div></div>
+</div>
+
+<div class="panel chartwrap">
+  <canvas id="chart"></canvas>
+  <div id="tooltip"></div>
+  <div class="legend">
+    <span class="key"><span class="dot" style="background:var(--internal)"></span>Internalize (principal)</span>
+    <span class="key"><span class="dot" style="background:var(--cross)"></span>Cross (client × client)</span>
+    <span class="key"><span class="dot" style="background:var(--market)"></span>Route out (market)</span>
+    <span class="key"><span class="xmark">×</span>Firm hedge</span>
+    <span class="key" style="margin-left:auto">Lines: best bid / best ask · shaded = spread</span>
+  </div>
+</div>
+
+<div class="grid3">
+  <section class="panel">
+    <h2>Order management — resting book <span class="count" id="bookcount"></span></h2>
+    <div class="scroll" id="bookwrap">
+      <table id="booktable" class="tnum">
+        <thead><tr><th>Order</th><th>Client</th><th>Side</th><th>Rem / Qty</th><th>Limit</th><th>TIF</th><th>Age</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="empty" id="bookempty">Book is empty</div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Principal book <span class="count" id="hcount"></span></h2>
+    <div class="pstats">
+      <div><div class="lbl">Position (sh)</div><div class="val tnum" id="posv">0</div></div>
+      <div><div class="lbl">P&amp;L (mark-to-mid)</div><div class="val tnum" id="pnlv">$0.00</div></div>
+      <div><div class="lbl">Cash from principal</div><div class="val small tnum" id="cashv">$0.00</div></div>
+      <div><div class="lbl">Internalized (sh)</div><div class="val small tnum" id="intshv">0</div></div>
+    </div>
+    <canvas id="posspark"></canvas>
+    <div class="footnote">Position over the day · dotted guides ±6,000 soft limit</div>
+    <div class="scroll" style="max-height:150px">
+      <table class="tnum ftrades" id="ftable">
+        <thead><tr><th>Time</th><th>Hedge</th><th>Qty</th><th>Price</th><th>Pos after</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="empty" id="fempty">No firm hedge trades yet</div>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h2>Fills <span class="count" id="fillcount"></span></h2>
+    <div class="legend" style="padding:8px 14px 4px" id="filltally"></div>
+    <div class="scroll">
+      <table class="tnum" id="filltable">
+        <thead><tr><th>Time</th><th>Order</th><th>Side</th><th>Qty</th><th>Price</th><th>Capacity</th><th>Venue</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <div class="empty" id="fillempty">No fills yet</div>
+    </div>
+  </section>
+</div>
+
+<script>
+const DATA = __DATA_JSON__;
+</script>
+<script>
+"use strict";
+const Q = DATA.quotes, FILLS = DATA.fills, ORDERS = DATA.orders, FIRM = DATA.firm;
+const DAY_MS = 23400000, CLOSE = DAY_MS;
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+const $ = id => document.getElementById(id);
+const px2 = c => "$" + (c / 100).toFixed(2);
+const fmtT = ms => {
+  const t = ms + 34200000; // 09:30 offset
+  const h = Math.floor(t/3600000), m = Math.floor(t/60000)%60, s = Math.floor(t/1000)%60, f = ms%1000;
+  return String(h).padStart(2,"0")+":"+String(m).padStart(2,"0")+":"+String(s).padStart(2,"0")+"."+String(f).padStart(3,"0");
+};
+const comma = n => n.toLocaleString("en-US");
+const VEN = { I: "INTERNAL", C: "CROSS", M: "MARKET" };
+const CAP = { P: "PRINCIPAL", A: "AGENCY" };
+
+// ---- indices ----
+function bisect(arr, t, key) { // last index with key(arr[i]) <= t, or -1
+  let lo = 0, hi = arr.length - 1, ans = -1;
+  while (lo <= hi) { const mid = (lo + hi) >> 1;
+    if (key(arr[mid]) <= t) { ans = mid; lo = mid + 1; } else hi = mid - 1; }
+  return ans;
+}
+// principal position/cash timeline: merge principal fills + firm trades
+const pev = [];
+for (const f of FILLS) if (f[6] === "P") {
+  const qty = f[4], px = f[5];
+  pev.push([f[0], f[3] === "B" ? -qty : qty, f[3] === "B" ? qty*px : -qty*px, 0]);
+}
+for (const t of FIRM) pev.push([t[0], t[1] === "B" ? t[2] : -t[2], t[1] === "B" ? -t[2]*t[3] : t[2]*t[3], 1]);
+pev.sort((a, b) => a[0] - b[0] || a[3] - b[3]);
+let cp = 0, cc = 0;
+const posT = pev.map(e => { cp += e[1]; cc += e[2]; return [e[0], cp, cc]; });
+// per-order fills, internalized share tally
+const fillsByOrder = {};
+FILLS.forEach((f, i) => { (fillsByOrder[f[1]] = fillsByOrder[f[1]] || []).push(i); });
+// cumulative venue share tallies aligned to FILLS index
+const cum = { I: [], C: [], M: [] }; let ci = 0, ccx = 0, cm = 0;
+for (const f of FILLS) { if (f[7] === "I") ci += f[4]; else if (f[7] === "C") ccx += f[4]; else cm += f[4];
+  cum.I.push(ci); cum.C.push(ccx); cum.M.push(cm); }
+
+// ---- chart ----
+const chart = $("chart"), ctx = chart.getContext("2d");
+const spark = $("posspark"), sctx = spark.getContext("2d");
+let W = 0, H = 0, dpr = 1;
+const PAD = { l: 8, r: 54, t: 12, b: 22 };
+let ymin = Infinity, ymax = -Infinity;
+for (const q of Q) { if (q[1] < ymin) ymin = q[1]; if (q[2] > ymax) ymax = q[2]; }
+const yr = ymax - ymin; ymin -= yr * .05; ymax += yr * .05;
+const X = t => PAD.l + (t / DAY_MS) * (W - PAD.l - PAD.r);
+const Y = p => PAD.t + (1 - (p - ymin) / (ymax - ymin)) * (H - PAD.t - PAD.b);
+const XT = x => (x - PAD.l) / (W - PAD.l - PAD.r) * DAY_MS;
+
+function sizeCanvas(cv) {
+  const r = cv.getBoundingClientRect(); dpr = window.devicePixelRatio || 1;
+  cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr);
+  cv.getContext("2d").setTransform(dpr, 0, 0, dpr, 0, 0);
+  return r;
+}
+function niceTicks(lo, hi, n) {
+  const span = hi - lo, step0 = span / n, mag = Math.pow(10, Math.floor(Math.log10(step0)));
+  let step = mag; for (const m of [1, 2, 2.5, 5, 10]) if (m * mag >= step0) { step = m * mag; break; }
+  const out = []; for (let v = Math.ceil(lo / step) * step; v <= hi; v += step) out.push(v);
+  return out;
+}
+let T = 0; // replay cursor ms
+function drawChart() {
+  const r = sizeCanvas(chart); W = r.width; H = r.height;
+  ctx.clearRect(0, 0, W, H);
+  ctx.font = "11px ui-monospace, Menlo, monospace";
+  // gridlines
+  ctx.strokeStyle = css("--grid"); ctx.fillStyle = css("--muted"); ctx.lineWidth = 1;
+  for (const v of niceTicks(ymin, ymax, 6)) {
+    const y = Y(v); ctx.beginPath(); ctx.moveTo(PAD.l, y); ctx.lineTo(W - PAD.r, y); ctx.stroke();
+    ctx.fillText("$" + (v / 100).toFixed(2), W - PAD.r + 6, y + 3.5);
+  }
+  for (let hh = 0; hh <= 6.5; hh += 1) {
+    const t = hh * 3600000; if (t > DAY_MS) break; const x = X(t);
+    ctx.strokeStyle = css("--grid"); ctx.beginPath(); ctx.moveTo(x, PAD.t); ctx.lineTo(x, H - PAD.b); ctx.stroke();
+    const hr = 9.5 + hh; const lab = (Math.floor(hr) % 12 || 12) + (hr % 1 ? ":30" : ":00");
+    ctx.fillText(lab, Math.max(2, x - 10), H - 7);
+  }
+  // spread band + bid/ask lines up to T
+  const n = Math.max(2, Math.floor(W - PAD.l - PAD.r));
+  const endX = X(Math.min(T, DAY_MS));
+  const bids = [], asks = [];
+  for (let i = 0; i <= n; i++) {
+    const x = PAD.l + i, t = XT(x); if (x > endX) break;
+    const qi = bisect(Q, t, q => q[0]); if (qi < 0) { bids.push(null); asks.push(null); continue; }
+    bids.push([x, Y(Q[qi][1])]); asks.push([x, Y(Q[qi][2])]);
+  }
+  if (bids.length > 1) {
+    ctx.beginPath();
+    let started = false;
+    for (const p of asks) { if (!p) continue; started ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]); started = true; }
+    for (let i = bids.length - 1; i >= 0; i--) { const p = bids[i]; if (p) ctx.lineTo(p[0], p[1]); }
+    ctx.closePath(); ctx.fillStyle = css("--band"); ctx.fill();
+    for (const [pts, col] of [[asks, css("--ink-2")], [bids, css("--muted")]]) {
+      ctx.beginPath(); started = false;
+      for (const p of pts) { if (!p) continue; started ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1]); started = true; }
+      ctx.strokeStyle = col; ctx.lineWidth = 1.4; ctx.stroke();
+    }
+    // direct labels at line ends
+    const lastB = bids.filter(Boolean).pop(), lastA = asks.filter(Boolean).pop();
+    if (lastA) { ctx.fillStyle = css("--ink-2"); ctx.fillText("ask", Math.min(lastA[0] + 5, W - PAD.r - 22), lastA[1] - 4); }
+    if (lastB) { ctx.fillStyle = css("--muted"); ctx.fillText("bid", Math.min(lastB[0] + 5, W - PAD.r - 22), lastB[1] + 11); }
+  }
+  // firm hedges (x marks)
+  ctx.strokeStyle = css("--muted"); ctx.lineWidth = 1.5;
+  for (const t of FIRM) { if (t[0] > T) break; const x = X(t[0]), y = Y(t[3]);
+    ctx.beginPath(); ctx.moveTo(x-3.5,y-3.5); ctx.lineTo(x+3.5,y+3.5); ctx.moveTo(x+3.5,y-3.5); ctx.lineTo(x-3.5,y+3.5); ctx.stroke(); }
+  // fill markers
+  const cols = { I: css("--internal"), C: css("--cross"), M: css("--market") };
+  const ring = css("--surface");
+  for (const f of FILLS) { if (f[0] > T) break;
+    const x = X(f[0]), y = Y(f[5]);
+    ctx.beginPath(); ctx.arc(x, y, 3.6, 0, 7);
+    ctx.fillStyle = cols[f[7]]; ctx.fill();
+    ctx.strokeStyle = ring; ctx.lineWidth = 1; ctx.stroke(); }
+  // cursor
+  const cx = X(T);
+  ctx.strokeStyle = css("--axis"); ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(cx, PAD.t); ctx.lineTo(cx, H - PAD.b); ctx.stroke();
+}
+
+function drawSpark() {
+  const r = sizeCanvas(spark); const w = r.width, h = r.height;
+  sctx.clearRect(0, 0, w, h);
+  const pmax = Math.max(8000, ...posT.map(p => Math.abs(p[1]))) * 1.1;
+  const sx = t => 6 + (t / DAY_MS) * (w - 12);
+  const sy = p => h / 2 - (p / pmax) * (h / 2 - 6);
+  sctx.strokeStyle = css("--axis"); sctx.lineWidth = 1;
+  sctx.beginPath(); sctx.moveTo(6, sy(0)); sctx.lineTo(w - 6, sy(0)); sctx.stroke();
+  sctx.setLineDash([3, 3]); sctx.strokeStyle = css("--grid");
+  for (const g of [6000, -6000]) { sctx.beginPath(); sctx.moveTo(6, sy(g)); sctx.lineTo(w - 6, sy(g)); sctx.stroke(); }
+  sctx.setLineDash([]);
+  sctx.strokeStyle = css("--internal"); sctx.lineWidth = 1.6;
+  sctx.beginPath(); sctx.moveTo(6, sy(0));
+  let last = 0;
+  for (const p of posT) { if (p[0] > T) break; sctx.lineTo(sx(p[0]), sy(last)); sctx.lineTo(sx(p[0]), sy(p[1])); last = p[1]; }
+  sctx.lineTo(sx(Math.min(T, DAY_MS)), sy(last)); sctx.stroke();
+  sctx.beginPath(); sctx.arc(sx(Math.min(T, DAY_MS)), sy(last), 3, 0, 7);
+  sctx.fillStyle = css("--internal"); sctx.fill();
+}
+
+// ---- tables ----
+const sideChip = s => '<span class="chip side">' + (s === "B" ? "BUY" : "SELL") + "</span>";
+function renderBook() {
+  const tb = $("booktable").querySelector("tbody");
+  const rows = [];
+  for (const o of ORDERS) {
+    // [oid, t, client, side, type, qty, limit, tif, restStart, restEnd]
+    if (o[8] === null || o[8] > T || (o[9] !== null && o[9] <= T)) continue;
+    let rem = o[5];
+    for (const fi of (fillsByOrder[o[0]] || [])) if (FILLS[fi][0] <= T) rem -= FILLS[fi][4];
+    if (rem <= 0) continue;
+    rows.push({ o, rem });
+  }
+  const sells = rows.filter(r => r.o[3] === "S").sort((a, b) => b.o[6] - a.o[6] || a.o[1] - b.o[1]);
+  const buys  = rows.filter(r => r.o[3] === "B").sort((a, b) => b.o[6] - a.o[6] || a.o[1] - b.o[1]);
+  const qi = bisect(Q, T, q => q[0]);
+  const mid = qi >= 0 ? '<tr class="spreadrow"><td colspan="7">— NBBO ' + px2(Q[qi][1]) + " / " + px2(Q[qi][2]) + " —</td></tr>" : "";
+  const row = r => "<tr><td class='mono'>" + r.o[0].replace("ORD-","#") + "</td><td>" + r.o[2].replace("CLIENT_","") +
+    "</td><td>" + sideChip(r.o[3]) + "</td><td>" + comma(r.rem) + " / " + comma(r.o[5]) +
+    "</td><td>" + px2(r.o[6]) + "</td><td>" + r.o[7] + "</td><td>" + Math.max(0, Math.floor((T - r.o[1]) / 60000)) + "m</td></tr>";
+  tb.innerHTML = sells.map(row).join("") + mid + buys.map(row).join("");
+  $("bookempty").style.display = rows.length ? "none" : "";
+  $("bookcount").textContent = rows.length ? sells.length + " sell · " + buys.length + " buy" : "";
+}
+function renderPrincipal(mid) {
+  const pi = bisect(posT, T, p => p[0]);
+  const pos = pi >= 0 ? posT[pi][1] : 0, cash = pi >= 0 ? posT[pi][2] : 0;
+  const pnl = (cash + (mid !== null ? pos * mid : 0)) / 100;
+  $("posv").textContent = (pos > 0 ? "+" : "") + comma(pos);
+  const pv = $("pnlv");
+  pv.textContent = (pnl >= 0 ? "+$" : "−$") + Math.abs(pnl).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  pv.className = "val tnum " + (pnl >= 0 ? "pnl-pos" : "pnl-neg");
+  $("cashv").textContent = (cash >= 0 ? "$" : "−$") + Math.abs(cash / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const li = bisect(FILLS, T, f => f[0]);
+  $("intshv").textContent = comma(li >= 0 ? cum.I[li] : 0);
+  const ft = FIRM.filter(t => t[0] <= T);
+  $("hcount").textContent = ft.length ? ft.length + " hedges" : "";
+  $("ftable").querySelector("tbody").innerHTML = ft.slice(-25).reverse().map(t =>
+    "<tr><td class='mono'>" + fmtT(t[0]).slice(0, 8) + "</td><td>" + sideChip(t[1]) + "</td><td>" + comma(t[2]) +
+    "</td><td>" + px2(t[3]) + "</td><td>" + (t[4] > 0 ? "+" : "") + comma(t[4]) + "</td></tr>").join("");
+  $("fempty").style.display = ft.length ? "none" : "";
+}
+function renderFills() {
+  const li = bisect(FILLS, T, f => f[0]);
+  const n = li + 1;
+  $("fillcount").textContent = n ? n + " of " + FILLS.length + " fills" : "";
+  $("filltally").innerHTML = n ?
+    '<span class="key"><span class="dot" style="background:var(--internal)"></span>Internal ' + comma(cum.I[li]) + " sh</span>" +
+    '<span class="key"><span class="dot" style="background:var(--cross)"></span>Cross ' + comma(cum.C[li]) + " sh</span>" +
+    '<span class="key"><span class="dot" style="background:var(--market)"></span>Routed ' + comma(cum.M[li]) + " sh</span>" : "";
+  const rows = [];
+  for (let i = li; i >= 0 && rows.length < 40; i--) {
+    const f = FILLS[i];
+    rows.push("<tr><td class='mono'>" + fmtT(f[0]).slice(0, 12) + "</td><td class='mono'>" + f[1].replace("ORD-","#") + "<span style='color:var(--muted)'> " + f[2].replace("CLIENT_","") + "</span>" +
+      "</td><td>" + sideChip(f[3]) + "</td><td>" + comma(f[4]) + "</td><td>" + px2(f[5]) +
+      "</td><td>" + CAP[f[6]] + "</td><td><span class='chip " + f[7] + "'>" + VEN[f[7]] + "</span></td></tr>");
+  }
+  $("filltable").querySelector("tbody").innerHTML = rows.join("");
+  $("fillempty").style.display = n ? "none" : "";
+}
+
+// ---- master update ----
+function update() {
+  $("scrub").value = T;
+  $("clock").textContent = fmtT(T);
+  const qi = bisect(Q, T, q => q[0]);
+  let mid = null;
+  if (qi >= 0) {
+    const q = Q[qi]; mid = (q[1] + q[2]) / 2;
+    $("bidv").textContent = px2(q[1]); $("askv").textContent = px2(q[2]);
+    $("bids").textContent = comma(q[3]) + " sh"; $("asks").textContent = comma(q[4]) + " sh";
+    $("sprv").textContent = (q[2] - q[1]) + "¢";
+    $("sprn").textContent = q[2] - q[1] >= 2 ? "internalizable" : "route regime";
+  } else {
+    $("bidv").textContent = $("askv").textContent = $("sprv").textContent = "—";
+    $("bids").textContent = $("asks").textContent = $("sprn").textContent = " ";
+  }
+  drawChart(); drawSpark(); renderBook(); renderPrincipal(mid); renderFills();
+}
+
+// ---- transport ----
+let playing = false, raf = null, lastTick = 0;
+const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+function tick(now) {
+  if (!playing) return;
+  const dt = now - lastTick; lastTick = now;
+  T = Math.min(DAY_MS, T + dt * (+$("speed").value));
+  update();
+  if (T >= DAY_MS) setPlaying(false); else raf = requestAnimationFrame(tick);
+}
+function setPlaying(p) {
+  playing = p; $("play").textContent = p ? "❚❚ Pause" : "▶ Play";
+  if (p) { if (T >= DAY_MS) T = 0; lastTick = performance.now(); raf = requestAnimationFrame(tick); }
+  else if (raf) cancelAnimationFrame(raf);
+}
+$("play").addEventListener("click", () => setPlaying(!playing));
+$("scrub").addEventListener("input", e => { T = +e.target.value; if (!playing || reduceMotion) update(); });
+document.addEventListener("keydown", e => {
+  if (e.code === "Space" && e.target.tagName !== "INPUT" && e.target.tagName !== "SELECT") { e.preventDefault(); setPlaying(!playing); }
+  if (e.code === "ArrowRight") { T = Math.min(DAY_MS, T + 60000); update(); }
+  if (e.code === "ArrowLeft") { T = Math.max(0, T - 60000); update(); }
+});
+
+// ---- hover tooltip ----
+const tip = $("tooltip");
+chart.addEventListener("mousemove", e => {
+  const r = chart.getBoundingClientRect();
+  const mx = e.clientX - r.left, my = e.clientY - r.top;
+  const t = XT(mx);
+  if (t < 0 || t > DAY_MS) { tip.style.display = "none"; return; }
+  // nearest visible fill within 10px
+  let best = null, bd = 100;
+  const lo = Math.max(0, bisect(FILLS, XT(mx - 12), f => f[0]));
+  for (let i = lo; i < FILLS.length; i++) {
+    const f = FILLS[i]; if (f[0] > T || f[0] > XT(mx + 12)) break;
+    const dx = X(f[0]) - mx, dy = Y(f[5]) - my, d = dx*dx + dy*dy;
+    if (d < bd) { bd = d; best = f; }
+  }
+  const qi = bisect(Q, Math.min(t, T), q => q[0]);
+  let html = "<div class='t-time mono'>" + fmtT(Math.round(Math.min(t, T))) + "</div>";
+  if (qi >= 0) html += "<div class='mono tnum'>bid " + px2(Q[qi][1]) + " · ask " + px2(Q[qi][2]) + "</div>";
+  if (best) html += "<div style='margin-top:3px'><span class='chip " + best[7] + "'>" + VEN[best[7]] + "</span> " +
+    (best[3]==="B"?"BUY":"SELL") + " " + comma(best[4]) + " @ " + px2(best[5]) +
+    "<br><span class='t-time'>" + best[1] + " · " + best[2] + " · " + CAP[best[6]] + "</span></div>";
+  tip.innerHTML = html; tip.style.display = "block";
+  tip.style.left = Math.min(mx + 14, r.width - 250) + "px";
+  tip.style.top = Math.min(my + 12, r.height - 80) + "px";
+});
+chart.addEventListener("mouseleave", () => tip.style.display = "none");
+chart.addEventListener("click", e => {
+  const r = chart.getBoundingClientRect();
+  T = Math.round(Math.max(0, Math.min(DAY_MS, XT(e.clientX - r.left)))); update();
+});
+
+addEventListener("resize", update);
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", update);
+const h = /t=(\d+)/.exec(location.hash);   // #t=<seconds into session> deep link
+T = h ? Math.min(DAY_MS, +h[1] * 1000) : 0;
+update();
+</script>

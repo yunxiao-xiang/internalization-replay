@@ -58,19 +58,21 @@ class Reporter:
         self.closes.append((order, leaves))
 
     # ---------- outputs ----------
-    def write_outputs(self, out_dir: str, position: int, cash: int,
-                      orders: list[Order]) -> str:
-        os.makedirs(out_dir, exist_ok=True)
-        with open(os.path.join(out_dir, "fills.csv"), "w", newline="") as f:
+    def write_outputs(self, fills_csv, firm_csv, summary_txt,
+                      position: int, cash: int, orders: list[Order]) -> str:
+        """Write the three output files; paths come from the caller (config.py)."""
+        for p in (fills_csv, firm_csv, summary_txt):
+            os.makedirs(os.path.dirname(os.fspath(p)) or ".", exist_ok=True)
+        with open(fills_csv, "w", newline="") as f:
             w = csv.DictWriter(f, FILL_COLUMNS, extrasaction="ignore")
             w.writeheader()
             w.writerows(self.fills)
-        with open(os.path.join(out_dir, "firm_trades.csv"), "w", newline="") as f:
+        with open(firm_csv, "w", newline="") as f:
             w = csv.DictWriter(f, FIRM_COLUMNS)
             w.writeheader()
             w.writerows(self.firm_trades)
         summary = self.summary(position, cash, orders)
-        with open(os.path.join(out_dir, "summary.txt"), "w") as f:
+        with open(summary_txt, "w") as f:
             f.write(summary)
         return summary
 

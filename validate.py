@@ -19,11 +19,9 @@ import sys
 from bisect import bisect_right
 from datetime import datetime
 
+import config
 from internalizer.data import load_orders, load_quotes
 from internalizer.models import to_cents
-
-QUOTES = "data/aapl_quotes_20260817.csv"
-ORDERS = "data/client_orders_20260817.csv"
 
 
 def fail(msg: str) -> None:
@@ -32,17 +30,17 @@ def fail(msg: str) -> None:
 
 
 def main() -> int:
-    quotes = load_quotes(QUOTES)
-    orders = {o.order_id: o for o in load_orders(ORDERS)}
+    quotes = load_quotes(config.QUOTES_CSV)
+    orders = {o.order_id: o for o in load_orders(config.ORDERS_CSV)}
     qts = [q.ts for q in quotes]
     # all quotes sharing an exact timestamp (engine may act on any of them)
     at_ts: dict[datetime, list] = {}
     for q in quotes:
         at_ts.setdefault(q.ts, []).append(q)
 
-    with open("out/fills.csv") as f:
+    with open(config.FILLS_CSV) as f:
         fills = list(csv.DictReader(f))
-    with open("out/firm_trades.csv") as f:
+    with open(config.FIRM_TRADES_CSV) as f:
         firm = list(csv.DictReader(f))
 
     position = 0
@@ -116,7 +114,7 @@ def main() -> int:
     if position != 0:
         fail(f"reconstructed EOD position {position} != 0")
 
-    with open("out/summary.txt") as f:
+    with open(config.SUMMARY_TXT) as f:
         summary = f.read()
     pnl = f"${cash / 100:,.2f}"
     if pnl not in summary:

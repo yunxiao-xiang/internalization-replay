@@ -3,20 +3,19 @@
 Total principal P&L = sum(edge vs mid at each trade) + sum(pos * d(mid)).
 Also buckets by hour and shows position/spread behavior in the selloff.
 """
-import csv, sys
+import csv
 from bisect import bisect_right
 from datetime import datetime
 
-sys.path.insert(0, "/Users/yunxiaoxiang/Desktop/projects/brooklyn OA")
+import config
 from internalizer.data import load_quotes
 from internalizer.models import to_cents
 
-base = "./"
-quotes = load_quotes(base + "data/aapl_quotes_20260817.csv")
+quotes = load_quotes(config.QUOTES_CSV)
 qts = [q.ts for q in quotes]
 
 trades = []  # (ts, signed_qty_for_firm, px)  firm buys > 0
-with open(base + "out/fills.csv") as f:
+with open(config.FILLS_CSV) as f:
     for r in csv.DictReader(f):
         if r["capacity"] != "PRINCIPAL":
             continue
@@ -24,7 +23,7 @@ with open(base + "out/fills.csv") as f:
         q = int(r["quantity"])
         firm_qty = -q if r["side"] == "BUY" else q   # client buy = firm sells
         trades.append((ts, firm_qty, to_cents(r["price"])))
-with open(base + "out/firm_trades.csv") as f:
+with open(config.FIRM_TRADES_CSV) as f:
     for r in csv.DictReader(f):
         ts = datetime.fromisoformat(r["timestamp"])
         q = int(r["quantity"])
@@ -83,7 +82,7 @@ print(f"max long {maxlong}, max short {maxshort}, trades {len(trades)}")
 
 # spread regime: internalized shares by spread bucket
 buck = {}
-with open(base + "out/fills.csv") as f:
+with open(config.FILLS_CSV) as f:
     for r in csv.DictReader(f):
         if r["venue"] != "INTERNAL":
             continue
