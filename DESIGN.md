@@ -1,12 +1,12 @@
 <style>
-body { font-size: 11pt; line-height: 1.28; }
+body { font-size: 11pt; line-height: 1.3; }
 h1 { font-size: 15pt; font-weight: 700; margin: 0 0 5pt; line-height: 1.2; }
-h2 { font-size: 13pt; font-weight: 700; margin: 8pt 0 2pt; line-height: 1.2; }
-p { margin: 0 0 4pt; }
-table { font-size: 10pt; margin: 2pt 0 4pt; width: auto; }
+h2 { font-size: 13pt; font-weight: 700; margin: 10pt 0 4pt; line-height: 1.2; }
+p { margin: 0 0 8pt; }
+table { font-size: 10pt; margin: 4pt 0 8pt; width: auto; }
 th, td { padding: 0.5pt 10pt 0.5pt 0; }
 ol, ul { margin: 0 0 4pt; padding-left: 14pt; }
-li { margin: 0 0 1pt; line-height: 1.28; }
+li { margin: 0 0 3pt; line-height: 1.3; }
 </style>
 
 # Design Write-up
