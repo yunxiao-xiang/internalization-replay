@@ -1,7 +1,7 @@
 <style>
 body { font-size: 11pt; line-height: 1.28; }
-h1 { font-size: 11pt; font-weight: 700; margin: 0 0 4pt; line-height: 1.2; }
-h2 { font-size: 11pt; font-weight: 700; margin: 7pt 0 2pt; line-height: 1.2; }
+h1 { font-size: 15pt; font-weight: 700; margin: 0 0 5pt; line-height: 1.2; }
+h2 { font-size: 13pt; font-weight: 700; margin: 8pt 0 2pt; line-height: 1.2; }
 p { margin: 0 0 4pt; }
 table { font-size: 10pt; margin: 2pt 0 4pt; width: auto; }
 th, td { padding: 0.5pt 10pt 0.5pt 0; }
@@ -86,8 +86,10 @@ Break-even: internalize only if expected capture from future offsetting flow
 exceeds the probability-weighted hedge cost plus expected adverse move.
 
 **Trade-offs accepted.** No trend prediction (fitting a signal to one
-simulated day is curve-fitting; the band bounds the damage). Static
-thresholds. One refinement was tested and rejected: unwinding 500 shares
+simulated day is curve-fitting; the band bounds the damage). No volatility
+estimate: one simulated day gives too few data points to measure it without
+forward-looking bias or extra assumptions, so thresholds and bands stay
+static. One refinement was tested and rejected: unwinding 500 shares
 whenever the spread is 1¢ and the book sits at the soft limit fired only 4
 times all day, because pinned inventory and tight spreads anti-correlate —
 evidence the hedging problem is procyclical and must be solved before the
