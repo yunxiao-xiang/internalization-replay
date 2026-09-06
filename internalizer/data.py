@@ -14,7 +14,9 @@ from .models import Order, Quote, to_cents
 
 
 def _rows(path: str):
-    with open(path, newline="") as f:
+    # utf-8-sig strips a BOM if present (a plain reader would corrupt the
+    # first header name into '﻿order_id' and break column lookup)
+    with open(path, newline="", encoding="utf-8-sig") as f:
         for raw in f:
             line = raw.strip()
             if not line:
@@ -28,9 +30,13 @@ def _rows(path: str):
 def _indexed(path: str):
     rows = _rows(path)
     header = next(rows)
-    idx = {name.strip().lower(): i for i, name in enumerate(header)}
+    idx = {name.strip().strip('"').lstrip("﻿").lower(): i
+           for i, name in enumerate(header)}
 
     def field(row, name):
+        if name not in idx:
+            raise KeyError(
+                f"column '{name}' not found in {path}; header has: {sorted(idx)}")
         return row[idx[name]].strip()
 
     return rows, field
