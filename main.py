@@ -29,9 +29,19 @@ def merge_events(quotes, orders):
             oi += 1
 
 
+def _sniff(path) -> str:
+    """'quotes' or 'orders', judged by the file's header line."""
+    with open(path, encoding="utf-8-sig") as f:
+        head = f.readline().lower()
+    return "quotes" if "bid_price" in head else "orders"
+
+
 def main(argv: list[str]) -> int:
     quotes_path = argv[1] if len(argv) > 1 else config.QUOTES_CSV
     orders_path = argv[2] if len(argv) > 2 else config.ORDERS_CSV
+    if _sniff(quotes_path) == "orders" and _sniff(orders_path) == "quotes":
+        print("note: input files look swapped; swapping them")
+        quotes_path, orders_path = orders_path, quotes_path
     if len(argv) > 3:
         fills_csv, firm_csv, summary_txt = config.out_paths(argv[3])
     else:
