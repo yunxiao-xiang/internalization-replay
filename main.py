@@ -13,7 +13,7 @@ import config
 from internalizer.data import load_orders, load_quotes
 from internalizer.engine import Engine
 from internalizer.reporting import Reporter
-from internalizer.strategy import Config, Strategy
+from internalizer.strategy import Strategy
 
 
 def merge_events(quotes, orders):
@@ -42,7 +42,7 @@ def main(argv: list[str]) -> int:
     orders = load_orders(orders_path)
 
     reporter = Reporter()
-    engine = Engine(Strategy(Config()), reporter)
+    engine = Engine(Strategy(config.STRATEGY), reporter)
     for kind, ev in merge_events(quotes, orders):
         if kind == "Q":
             engine.on_quote(ev)

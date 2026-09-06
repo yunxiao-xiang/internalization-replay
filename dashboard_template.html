@@ -50,7 +50,11 @@ header .sub { color: var(--muted); font-size: 12.5px; }
 .tile .lbl { font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
 .tile .val { font-size: 21px; font-weight: 620; margin-top: 1px; }
 .tile .sub2 { font-size: 11px; color: var(--ink-2); margin-top: 1px; }
-.transport { flex: 1 1 340px; display: flex; align-items: center; gap: 10px; padding: 8px 14px; }
+.transport { flex: 1 1 340px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; padding: 8px 14px; }
+.transport label.toggle { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--ink-2); white-space: nowrap; cursor: pointer; }
+.transport label.toggle input { accent-color: var(--internal); }
+#orderinfo { flex-basis: 100%; font-size: 12px; color: var(--ink-2); display: none; }
+#orderinfo .chip { margin-right: 4px; }
 .transport button {
   background: var(--surface-2); color: var(--ink); border: 1px solid var(--border);
   border-radius: 6px; font: 600 13px system-ui, sans-serif; padding: 6px 14px; cursor: pointer;
@@ -79,7 +83,7 @@ header .sub { color: var(--muted); font-size: 12.5px; }
 #tooltip .t-time { color: var(--muted); font-size: 11px; }
 
 /* ---- lower grid ---- */
-.grid3 { display: grid; grid-template-columns: 1.15fr .85fr 1.3fr; gap: 12px; align-items: start; }
+.grid3 { display: grid; grid-template-columns: 1fr .78fr 1.6fr; gap: 12px; align-items: start; }
 @media (max-width: 1080px) { .grid3 { grid-template-columns: 1fr; } }
 section h2 {
   font-size: 11.5px; text-transform: uppercase; letter-spacing: .09em; color: var(--muted);
@@ -104,6 +108,12 @@ tr:last-child td { border-bottom: none; }
 .chip.C { background: color-mix(in srgb, var(--cross) 16%, transparent); color: var(--cross); }
 .chip.M { background: color-mix(in srgb, var(--market) 16%, transparent); color: var(--market); }
 .chip.side { background: var(--surface-2); color: var(--ink-2); }
+.chip.stF { background: color-mix(in srgb, var(--up) 14%, transparent); color: var(--up); }
+.chip.stR { background: color-mix(in srgb, var(--internal) 16%, transparent); color: var(--internal); }
+.chip.stC { background: var(--surface-2); color: var(--muted); }
+.chip.stE { background: color-mix(in srgb, var(--down) 14%, transparent); color: var(--down); }
+.orders-section { margin-top: 12px; }
+.orders-section .scroll { max-height: 302px; }  /* header + ~10 rows */
 .spreadrow td { text-align: center; color: var(--muted); font-size: 11px; background: var(--surface-2); padding: 3px; border-bottom: 1px solid var(--border); }
 
 /* ---- principal panel ---- */
@@ -131,8 +141,10 @@ tr:last-child td { border-bottom: none; }
       <option value="1200">1200×</option>
       <option value="6000">6000×</option>
     </select>
+    <label class="toggle"><input type="checkbox" id="ordermode"> Pause on order</label>
     <input type="range" id="scrub" min="0" max="23400000" value="0" step="100" aria-label="Replay time">
     <div id="clock" class="mono tnum">09:30:00.000</div>
+    <div id="orderinfo"></div>
   </div>
   <div class="panel tile"><div class="lbl">Best bid</div><div class="val tnum" id="bidv">—</div><div class="sub2 tnum" id="bids">&nbsp;</div></div>
   <div class="panel tile"><div class="lbl">Best ask</div><div class="val tnum" id="askv">—</div><div class="sub2 tnum" id="asks">&nbsp;</div></div>
@@ -187,13 +199,24 @@ tr:last-child td { border-bottom: none; }
     <div class="legend" style="padding:8px 14px 4px" id="filltally"></div>
     <div class="scroll">
       <table class="tnum" id="filltable">
-        <thead><tr><th>Time</th><th>Order</th><th>Side</th><th>Qty</th><th>Price</th><th>Capacity</th><th>Venue</th></tr></thead>
+        <thead><tr><th>Time</th><th>Order</th><th>Side</th><th>Qty</th><th>Price</th><th>Bid</th><th>Ask</th><th>Capacity</th><th>Venue</th></tr></thead>
         <tbody></tbody>
       </table>
       <div class="empty" id="fillempty">No fills yet</div>
     </div>
   </section>
 </div>
+
+<section class="panel orders-section">
+  <h2>Processed client orders <span class="count" id="ordercount"></span></h2>
+  <div class="scroll">
+    <table class="tnum" id="ordertable">
+      <thead><tr><th>Time</th><th>Order</th><th>Client</th><th>Side</th><th>Type</th><th>Qty</th><th>Filled</th><th>Limit</th><th>TIF</th><th>Status</th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="empty" id="orderempty">No orders processed yet</div>
+  </div>
+</section>
 
 <script>
 const DATA = __DATA_JSON__;
@@ -398,10 +421,36 @@ function renderFills() {
     const f = FILLS[i];
     rows.push("<tr><td class='mono'>" + fmtT(f[0]).slice(0, 12) + "</td><td class='mono'>" + f[1].replace("ORD-","#") + "<span style='color:var(--muted)'> " + f[2].replace("CLIENT_","") + "</span>" +
       "</td><td>" + sideChip(f[3]) + "</td><td>" + comma(f[4]) + "</td><td>" + px2(f[5]) +
+      "</td><td style='color:var(--ink-2)'>" + px2(f[8]) + "</td><td style='color:var(--ink-2)'>" + px2(f[9]) +
       "</td><td>" + CAP[f[6]] + "</td><td><span class='chip " + f[7] + "'>" + VEN[f[7]] + "</span></td></tr>");
   }
   $("filltable").querySelector("tbody").innerHTML = rows.join("");
   $("fillempty").style.display = n ? "none" : "";
+}
+
+function renderOrders() {
+  const rows = [];
+  let n = 0;
+  for (let i = ORDERS.length - 1; i >= 0; i--) {   // newest first
+    const o = ORDERS[i];
+    if (o[1] > T) continue;
+    n++;
+    let filled = 0;
+    for (const fi of (fillsByOrder[o[0]] || [])) if (FILLS[fi][0] <= T) filled += FILLS[fi][4];
+    let st;
+    if (filled >= o[5]) st = ["stF", "FILLED"];
+    else if (o[8] !== null && o[8] <= T && (o[9] === null || T < o[9])) st = ["stR", "RESTING"];
+    else if (o[8] !== null) st = ["stE", "EXPIRED"];
+    else st = ["stC", "CANCELLED"];
+    rows.push("<tr><td class='mono'>" + fmtT(o[1]).slice(0, 12) + "</td><td class='mono'>" + o[0].replace("ORD-","#") +
+      "</td><td>" + o[2].replace("CLIENT_","") + "</td><td>" + sideChip(o[3]) +
+      "</td><td>" + (o[4] === "M" ? "MKT" : "LMT") + "</td><td>" + comma(o[5]) +
+      "</td><td>" + comma(filled) + "</td><td>" + (o[6] === null ? "—" : px2(o[6])) +
+      "</td><td>" + o[7] + "</td><td><span class='chip " + st[0] + "'>" + st[1] + "</span></td></tr>");
+  }
+  $("ordertable").querySelector("tbody").innerHTML = rows.join("");
+  $("orderempty").style.display = n ? "none" : "";
+  $("ordercount").textContent = n ? n + " of " + ORDERS.length + " orders · scroll for more" : "";
 }
 
 // ---- master update ----
@@ -420,30 +469,51 @@ function update() {
     $("bidv").textContent = $("askv").textContent = $("sprv").textContent = "—";
     $("bids").textContent = $("asks").textContent = $("sprn").textContent = " ";
   }
-  drawChart(); drawSpark(); renderBook(); renderPrincipal(mid); renderFills();
+  drawChart(); drawSpark(); renderBook(); renderPrincipal(mid); renderFills(); renderOrders();
 }
 
 // ---- transport ----
 let playing = false, raf = null, lastTick = 0;
+let stopIdx = -1;   // order-driven mode: index of the last order we paused at
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+function syncStopIdx() { stopIdx = bisect(ORDERS, T, o => o[1]); }
+function showOrderInfo(o) {
+  const oi = $("orderinfo");
+  oi.innerHTML = "Order arrived: <span class='mono'>" + o[0].replace("ORD-","#") + "</span> · " +
+    o[2].replace("CLIENT_","client ") + " · " + sideChip(o[3]) + " " + comma(o[5]) + " " +
+    (o[4] === "M" ? "MARKET" : "LIMIT " + px2(o[6])) + " · " + o[7] +
+    " <span style='color:var(--muted)'>— press Play for next order</span>";
+  oi.style.display = "block";
+}
+function hideOrderInfo() { $("orderinfo").style.display = "none"; }
 function tick(now) {
   if (!playing) return;
   const dt = now - lastTick; lastTick = now;
-  T = Math.min(DAY_MS, T + dt * (+$("speed").value));
+  const T2 = Math.min(DAY_MS, T + dt * (+$("speed").value));
+  if ($("ordermode").checked) {
+    const cand = stopIdx + 1;
+    if (cand < ORDERS.length && ORDERS[cand][1] <= T2) {
+      T = ORDERS[cand][1]; stopIdx = cand;
+      update(); setPlaying(false); showOrderInfo(ORDERS[cand]);
+      return;
+    }
+  }
+  T = T2;
   update();
   if (T >= DAY_MS) setPlaying(false); else raf = requestAnimationFrame(tick);
 }
 function setPlaying(p) {
   playing = p; $("play").textContent = p ? "❚❚ Pause" : "▶ Play";
-  if (p) { if (T >= DAY_MS) T = 0; lastTick = performance.now(); raf = requestAnimationFrame(tick); }
+  if (p) { hideOrderInfo(); if (T >= DAY_MS) { T = 0; syncStopIdx(); } lastTick = performance.now(); raf = requestAnimationFrame(tick); }
   else if (raf) cancelAnimationFrame(raf);
 }
 $("play").addEventListener("click", () => setPlaying(!playing));
-$("scrub").addEventListener("input", e => { T = +e.target.value; if (!playing || reduceMotion) update(); });
+$("ordermode").addEventListener("change", syncStopIdx);
+$("scrub").addEventListener("input", e => { T = +e.target.value; syncStopIdx(); hideOrderInfo(); if (!playing || reduceMotion) update(); });
 document.addEventListener("keydown", e => {
   if (e.code === "Space" && e.target.tagName !== "INPUT" && e.target.tagName !== "SELECT") { e.preventDefault(); setPlaying(!playing); }
-  if (e.code === "ArrowRight") { T = Math.min(DAY_MS, T + 60000); update(); }
-  if (e.code === "ArrowLeft") { T = Math.max(0, T - 60000); update(); }
+  if (e.code === "ArrowRight") { T = Math.min(DAY_MS, T + 60000); syncStopIdx(); hideOrderInfo(); update(); }
+  if (e.code === "ArrowLeft") { T = Math.max(0, T - 60000); syncStopIdx(); hideOrderInfo(); update(); }
 });
 
 // ---- hover tooltip ----
@@ -474,12 +544,14 @@ chart.addEventListener("mousemove", e => {
 chart.addEventListener("mouseleave", () => tip.style.display = "none");
 chart.addEventListener("click", e => {
   const r = chart.getBoundingClientRect();
-  T = Math.round(Math.max(0, Math.min(DAY_MS, XT(e.clientX - r.left)))); update();
+  T = Math.round(Math.max(0, Math.min(DAY_MS, XT(e.clientX - r.left))));
+  syncStopIdx(); hideOrderInfo(); update();
 });
 
 addEventListener("resize", update);
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", update);
 const h = /t=(\d+)/.exec(location.hash);   // #t=<seconds into session> deep link
 T = h ? Math.min(DAY_MS, +h[1] * 1000) : 0;
+syncStopIdx();
 update();
 </script>

@@ -16,7 +16,7 @@ from internalizer.book import OrderBook
 from internalizer.data import load_orders, load_quotes
 from internalizer.engine import Engine
 from internalizer.reporting import Reporter
-from internalizer.strategy import Config, Strategy
+from internalizer.strategy import Strategy
 from main import merge_events
 
 
@@ -38,7 +38,7 @@ def main() -> None:
     OrderBook.add = add_logged
     try:
         reporter = Reporter()
-        engine = Engine(Strategy(Config()), reporter)
+        engine = Engine(Strategy(config.STRATEGY), reporter)
         for kind, ev in merge_events(quotes, orders):
             (engine.on_quote if kind == "Q" else engine.on_order)(ev)
         engine.on_close()
@@ -48,7 +48,8 @@ def main() -> None:
     fills = [
         [ms(datetime.fromisoformat(f["timestamp"])), f["order_id"], f["client_id"],
          f["side"][0], f["quantity"], f["_px"], f["capacity"][0],
-         {"INTERNAL": "I", "CROSS": "C", "MARKET": "M"}[f["venue"]]]
+         {"INTERNAL": "I", "CROSS": "C", "MARKET": "M"}[f["venue"]],
+         f["_bid"], f["_ask"]]
         for f in reporter.fills
     ]
 
