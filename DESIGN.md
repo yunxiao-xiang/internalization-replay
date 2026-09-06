@@ -53,8 +53,33 @@ tight. One asymmetry: flow that *reduces* existing inventory is always
 accepted, at the improved midpoint when the spread allows, otherwise at the
 touch (the client does no worse than routing; the firm exits without paying
 the spread). Client flow is roughly two-sided, so most inventory exits this
-way rather than through hedges — that netting is where most of the P&L
-(~$14.4k on the day) comes from.
+way rather than through hedges (20 hedge trades against 243k internalized
+shares).
+
+**The break-even condition, made explicit.** Internalizing a fill is worth it
+only when: *expected spread captured from a future offsetting client order >
+probability-weighted cost of having to hedge instead (half the spread at exit
++ the expected adverse move while holding)*. Midpoint pricing sets the
+first term to roughly zero by construction — each leg trades at mid, so a
+netted pair captures only the half-cent rounding, and the hedge term is pure
+cost. The day's P&L attribution proves it: of the +$14,396, only **+$160** is
+edge versus the contemporaneous midpoint; **+$14,235 is inventory drift** —
+the position happening to be short into the midday selloff ($11.4k of it in
+the 11:00 hour alone). On a day engineered with a selloff, a pop, and a
+closing rally, that sign is luck: the same policy with the flow imbalance
+reversed loses a similar amount. What the risk framework actually bounds is
+the magnitude — the ±6k band caps exposure at roughly band × move, and the
+hard cap, reduce-only close, and forced flatten keep the tail finite.
+
+**Wide spreads cut both ways.** The 7¢ spreads of the midday selloff make
+internalizing look most attractive (most spread to capture) exactly when it
+is most dangerous: the market is trending against whoever holds inventory,
+and exiting costs half of that same wide spread. This engine deliberately
+does not condition on the trend — a live trend estimate from the tape is a
+prediction, and mispredicting it is worse than not using it — so the
+protection is the inventory band, not a directional signal. A production
+policy would tighten the band or go reduce-only when the spread is wide *and*
+the tape is moving directionally; see the production section.
 
 **Inventory risk.** Two limits: a hard cap of ±10,000 shares that principal
 fills are sized against (breach is impossible, the residual routes), and a
@@ -107,11 +132,20 @@ locally in the module that owns it:
   executed immediately, opposite-side limits almost never coexist inside the
   spread. This validated the choice not to queue marketable orders to
   manufacture crosses; the waterfall order stayed as designed.
-- **Netting, not hedging, carries the P&L:** the flow turned out two-sided
-  enough that most inventory exited through opposite client flow — only 20
-  hedge trades (21,300 shares) against 243,300 internalized shares. The
-  soft-band rebalancer exists but fires rarely; the always-accept-risk-reducing
-  -flow rule does most of the work.
+- **Drift, not spread capture, carries the P&L:** attributing each principal
+  trade against the contemporaneous midpoint decomposes the +$14,396 into
+  +$160 of trade edge and +$14,235 of inventory drift. Midpoint pricing gives
+  the client nearly the entire spread, so the realized profit is the position
+  happening to sit on the right side of the day's moves — bounded by the risk
+  band, but directional. This was only visible after running the attribution;
+  it reframed the P&L claim honestly rather than changing the code.
+- **The market moving through a resting limit is a compliance trap:** a
+  resting buy at 190.00 when the ask drops to 189.95 must fill at ≤ 189.95
+  (price improvement), never at its now-stale limit. The design already
+  handles this — marketable resting orders re-price through the same waterfall
+  (improved midpoint or the new touch) and the `_fill()` chokepoint asserts
+  every price against the current NBBO — and `test_engine.py` pins the case
+  in both directions.
 
 ## Assumptions
 
@@ -133,6 +167,18 @@ locally in the module that owns it:
   volatility-scaled soft bands, and a kill switch that flips the strategy to
   route-everything. Hedging via marketable limit orders with slippage
   modeling instead of assumed fills at the touch.
+- **Regime-aware internalization:** with enough history to estimate it
+  properly, condition on the joint state of spread and short-horizon drift —
+  go reduce-only (or shrink the band) when the spread is wide and the tape is
+  trending, since that is precisely when incoming flow is adversely selected
+  and the hedge exit is most expensive. Not done here: fitting a trend signal
+  to one simulated day would be curve-fitting, and the one-day attribution
+  shows the band already bounds the damage.
+- **Pricing that prices the risk:** midpoint improvement is a client-friendly
+  choice, not an economic one — it leaves the firm almost no edge per fill.
+  Production pricing would slide between midpoint and the touch based on the
+  break-even condition above (expected offset arrival rate vs hedge cost),
+  per client tier.
 - **Compliance:** the NBBO check should also run post-trade from an
   independent process (as `validate.py` sketches), with clock-sync tolerance
   around quote changes.

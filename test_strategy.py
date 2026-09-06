@@ -21,6 +21,9 @@ def test_improved_price():
     # spread 2c: both sides get the exact midpoint
     assert S.improved_price("BUY", 24478, 24480) == 24479
     assert S.improved_price("SELL", 24478, 24480) == 24479
+    # spread 7c: midpoint pricing splits the wide spread with the client
+    assert S.improved_price("BUY", 24478, 24485) == 24482
+    assert S.improved_price("SELL", 24478, 24485) == 24481
 
 
 def test_cross_window_clamps_to_limits_and_nbbo():
