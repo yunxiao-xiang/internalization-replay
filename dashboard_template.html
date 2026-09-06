@@ -113,6 +113,16 @@ tr:last-child td { border-bottom: none; }
 .chip.stC { background: var(--surface-2); color: var(--muted); }
 .chip.stE { background: color-mix(in srgb, var(--down) 14%, transparent); color: var(--down); }
 .orders-section { margin-top: 12px; }
+.fbar { display: flex; flex-wrap: wrap; gap: 6px; padding: 9px 14px 2px; }
+.fbtn {
+  background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--border);
+  border-radius: 12px; font: 600 11px system-ui, sans-serif; padding: 3px 10px;
+  cursor: pointer; display: inline-flex; align-items: center; gap: 5px;
+}
+.fbtn:hover { border-color: var(--muted); }
+.fbtn:focus-visible { outline: 2px solid var(--internal); outline-offset: 1px; }
+.fbtn.active { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+.fbtn .dot { width: 7px; height: 7px; }
 .orders-section .scroll { max-height: 302px; }  /* header + ~10 rows */
 .spreadrow td { text-align: center; color: var(--muted); font-size: 11px; background: var(--surface-2); padding: 3px; border-bottom: 1px solid var(--border); }
 
@@ -196,6 +206,14 @@ tr:last-child td { border-bottom: none; }
 
   <section class="panel">
     <h2>Fills <span class="count" id="fillcount"></span></h2>
+    <div class="fbar" role="group" aria-label="Filter fills">
+      <button class="fbtn active" data-f="ALL">All</button>
+      <button class="fbtn" data-f="I"><span class="dot" style="background:var(--internal)"></span>Internalization</button>
+      <button class="fbtn" data-f="C"><span class="dot" style="background:var(--cross)"></span>Cross</button>
+      <button class="fbtn" data-f="M"><span class="dot" style="background:var(--market)"></span>Route out</button>
+      <button class="fbtn" data-f="P">Principal execution</button>
+      <button class="fbtn" data-f="A">Agency execution</button>
+    </div>
     <div class="legend" style="padding:8px 14px 4px" id="filltally"></div>
     <div class="scroll">
       <table class="tnum" id="filltable">
@@ -408,10 +426,17 @@ function renderPrincipal(mid) {
     "</td><td>" + px2(t[3]) + "</td><td>" + (t[4] > 0 ? "+" : "") + comma(t[4]) + "</td></tr>").join("");
   $("fempty").style.display = ft.length ? "none" : "";
 }
+let fillFilter = "ALL";
+const fillMatch = f => fillFilter === "ALL" || f[7] === fillFilter || f[6] === fillFilter;
 function renderFills() {
   const li = bisect(FILLS, T, f => f[0]);
   const n = li + 1;
-  $("fillcount").textContent = n ? n + " of " + FILLS.length + " fills" : "";
+  let nMatch = 0;
+  for (let i = 0; i <= li; i++) if (fillMatch(FILLS[i])) nMatch++;
+  $("fillcount").textContent = n
+    ? (fillFilter === "ALL" ? n + " of " + FILLS.length + " fills"
+       : nMatch + " matching · " + n + " of " + FILLS.length + " fills")
+    : "";
   $("filltally").innerHTML = n ?
     '<span class="key"><span class="dot" style="background:var(--internal)"></span>Internal ' + comma(cum.I[li]) + " sh</span>" +
     '<span class="key"><span class="dot" style="background:var(--cross)"></span>Cross ' + comma(cum.C[li]) + " sh</span>" +
@@ -419,13 +444,23 @@ function renderFills() {
   const rows = [];
   for (let i = li; i >= 0 && rows.length < 40; i--) {
     const f = FILLS[i];
+    if (!fillMatch(f)) continue;
     rows.push("<tr><td class='mono'>" + fmtT(f[0]).slice(0, 12) + "</td><td class='mono'>" + f[1].replace("ORD-","#") + "<span style='color:var(--muted)'> " + f[2].replace("CLIENT_","") + "</span>" +
       "</td><td>" + sideChip(f[3]) + "</td><td>" + comma(f[4]) + "</td><td>" + px2(f[5]) +
       "</td><td style='color:var(--ink-2)'>" + px2(f[8]) + "</td><td style='color:var(--ink-2)'>" + px2(f[9]) +
       "</td><td>" + CAP[f[6]] + "</td><td><span class='chip " + f[7] + "'>" + VEN[f[7]] + "</span></td></tr>");
   }
   $("filltable").querySelector("tbody").innerHTML = rows.join("");
-  $("fillempty").style.display = n ? "none" : "";
+  const empty = $("fillempty");
+  empty.style.display = (n && nMatch) ? "none" : "";
+  empty.textContent = n && !nMatch ? "No fills match this filter yet" : "No fills yet";
+}
+for (const b of document.querySelectorAll(".fbtn")) {
+  b.addEventListener("click", () => {
+    fillFilter = b.dataset.f;
+    for (const x of document.querySelectorAll(".fbtn")) x.classList.toggle("active", x === b);
+    renderFills();
+  });
 }
 
 function renderOrders() {
