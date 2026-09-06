@@ -101,11 +101,25 @@ detection on quotes — a stale NBBO silently invalidates "compliant" fills.
 **Risk:** dollar limits, volatility-targeted soft bands with hysteresis
 (constant dollar risk instead of constant shares — the hedge blotter's
 `position_after` column pinned at ±6,000 shows the static band degenerating
-into a full-band directional position during trends), limits that shrink into
-the close, MOC orders for the flatten, and a kill switch to route-everything.
-**Pricing:** sub-penny price improvement (making 1¢ spreads internalizable)
-and per-client markout tiers — treating all flow as equally benign is the
-biggest realism gap. **Plumbing:** explicit OMS order-state machine with
+into a full-band directional position during trends), and position limits
+that shrink with time remaining: capacity ≈ ADV × (remaining / 390) ×
+participation rate (5–10%) — at 5 minutes and 5% participation that formula
+gives ~32,000 shares, so the hard-coded 10,000 is conservative by 3×. MOC
+orders for the flatten, and a kill switch to route-everything.
+**Hedge execution:** the model assumes hedges fill fully at the touch; in
+production the firm chooses between crossing the spread (aggressive) and
+posting inside it (passive) — compare a vol-based fair-value estimate against
+the touch and cross only when the gap exceeds a threshold, working the rest
+passively. **Pricing:** sub-penny price improvement (making 1¢ spreads
+internalizable); inventory-risk-adjusted principal pricing that skews the
+fill price away from firm-favorable midpoint as the book fills up; and
+per-client markout tiers — a toxicity multiplier on the 2¢ spread threshold
+per client, since treating all flow as equally benign is the biggest realism
+gap. **Costs:** internalize-vs-route decisions should net out exchange fees
+and market impact, both ignored here. **Data:** with full tick/depth data
+instead of L1 snapshots, routed fills could walk the book realistically
+rather than filling at the displayed touch (unneeded here by the prompt's
+assumptions). **Plumbing:** explicit OMS order-state machine with
 client execution reports, journaled fills and position for intraday restart,
 and the `validate.py` audit run post-trade as an independent compliance
 process.
