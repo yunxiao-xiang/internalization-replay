@@ -86,6 +86,33 @@ band); no queueing of marketable flow to manufacture crosses; the spread
 threshold and bands are fixed constants rather than fitted to volatility.
 Simple, explainable rules were preferred over tuned ones throughout.
 
+## Discoveries during implementation
+
+These were found empirically while building against the data — none were known
+ahead of time, and none required changing the code structure; each was absorbed
+locally in the module that owns it:
+
+- **Input format quirk:** both CSVs wrap every physical line in double quotes
+  and use CRLF endings, so a naive `csv.reader` sees one giant field per row.
+  Handled entirely inside `data.py`'s loader; nothing downstream is aware.
+- **Sub-millisecond quote bursts:** the tape prints multiple quotes within the
+  same millisecond. The engine simply applies them in file order and each fill
+  records the exact quote it executed against; the validator accepts any quote
+  sharing the fill's exact timestamp when checking NBBO consistency.
+- **Half-cent midpoints:** odd spreads (3¢, 5¢, 7¢) put the true midpoint on a
+  half-cent. This forced an explicit rounding rule — round the half-cent in the
+  firm's favor — which still leaves the client ≥ 1¢ of improvement whenever the
+  spread is ≥ 2¢. A one-line decision in `strategy.py`.
+- **Crosses are structurally rare (~1,600 shares):** because marketable flow is
+  executed immediately, opposite-side limits almost never coexist inside the
+  spread. This validated the choice not to queue marketable orders to
+  manufacture crosses; the waterfall order stayed as designed.
+- **Netting, not hedging, carries the P&L:** the flow turned out two-sided
+  enough that most inventory exited through opposite client flow — only 20
+  hedge trades (21,300 shares) against 243,300 internalized shares. The
+  soft-band rebalancer exists but fires rarely; the always-accept-risk-reducing
+  -flow rule does most of the work.
+
 ## Assumptions
 
 - Routed orders and firm hedges fill fully at the touch regardless of
