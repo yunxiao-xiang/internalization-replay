@@ -47,7 +47,7 @@ hard stop on 15:55 (configurable) to take increasing risk, and by 16:00 MOC all 
 (5) one "drawback" of applying soft limit and hard limit on position - after hitting the soft limit, the strategy will only execute the qty above limit and passively wait for another offsetting client order coming in. However i tried to let principal book liquidate some shares when it stucks in soft limit (6000) and spread is 1 cent wide (idea is to aggressively execute some when its quiet), but it doesnt make too much difference as we get most flows in volatile times and spreads are wide at that time. One intuition here is we hold maximum of 6000 shares directional risk and resist taking more in volatile times.
 
 2. principal fill at mid rounded towards principal book's side, later can swtich to principal book risk adjusted price later
-3. no impact / fee accounted for principal fill vs internalization, actually we should count that in before make decision to fill in market
+3. no impact / fee accounted for execution vs internalization, actually we should count that in before make decision to fill in market
 4. quote book can hold all data if we have tick data instead of orderbook snapshot - sometimes client can fill at not only NBBO （not needed as we made assumption "Assume routed orders fill immediately and completely at the prevailing market quote" and "All executions must occur at or within the current market best bid/ask (NBBO) at the time of the fill."
 
 why 2 cents spread:
@@ -123,3 +123,4 @@ on_order 的实际次序：
 1. 先尝试 cross（只需限价窗口与 NBBO 重叠，不要求 marketable）；
 2. 判断 marketable（买限价 ≥ ask / 卖限价 ≤ bid）——只有 marketable 的订单才进入 principal_quote 定价；
 3. 非 marketable 的残量：DAY → rest 进 book，IOC → 取消。
+regen cmd: pdf generate --no-confidential --no-chapter-breaks --margins 0.6in --title "Internalization Engine Design" DESIGN.md DESIGN.pdf
