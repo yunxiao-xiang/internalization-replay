@@ -1,11 +1,13 @@
 """CSV loading.
 
-The provided files wrap every physical line in double quotes and use CRLF
-endings, so each line is unwrapped before splitting. Neither file contains
-embedded commas inside fields.
+Robust to formatting differences between environments: columns are resolved
+by header name (any column order works), and both quoting styles are handled
+— files that wrap each whole line in double quotes (the original data set)
+and standard per-field CSV quoting.
 """
 from __future__ import annotations
 
+import csv
 from datetime import datetime
 
 from .models import Order, Quote, to_cents
@@ -17,41 +19,51 @@ def _rows(path: str):
             line = raw.strip()
             if not line:
                 continue
-            if line.startswith('"') and line.endswith('"'):
+            # whole-line quoting: "a,b,c" (no per-field quotes inside)
+            if line.startswith('"') and line.endswith('"') and '","' not in line:
                 line = line[1:-1]
-            yield line.split(",")
+            yield next(csv.reader([line]))
+
+
+def _indexed(path: str):
+    rows = _rows(path)
+    header = next(rows)
+    idx = {name.strip().lower(): i for i, name in enumerate(header)}
+
+    def field(row, name):
+        return row[idx[name]].strip()
+
+    return rows, field
 
 
 def load_quotes(path: str) -> list[Quote]:
-    rows = _rows(path)
-    next(rows)  # header
+    rows, f = _indexed(path)
     return [
         Quote(
-            ts=datetime.fromisoformat(r[0]),
-            symbol=r[1],
-            bid=to_cents(r[2]),
-            bid_size=int(r[3]),
-            ask=to_cents(r[4]),
-            ask_size=int(r[5]),
+            ts=datetime.fromisoformat(f(r, "timestamp")),
+            symbol=f(r, "symbol"),
+            bid=to_cents(f(r, "bid_price")),
+            bid_size=int(f(r, "bid_size")),
+            ask=to_cents(f(r, "ask_price")),
+            ask_size=int(f(r, "ask_size")),
         )
         for r in rows
     ]
 
 
 def load_orders(path: str) -> list[Order]:
-    rows = _rows(path)
-    next(rows)  # header
+    rows, f = _indexed(path)
     return [
         Order(
-            order_id=r[0],
-            ts=datetime.fromisoformat(r[1]),
-            client_id=r[2],
-            symbol=r[3],
-            side=r[4],
-            order_type=r[5],
-            quantity=int(r[6]),
-            limit=to_cents(r[7]) if r[7] else None,
-            tif=r[8],
+            order_id=f(r, "order_id"),
+            ts=datetime.fromisoformat(f(r, "timestamp")),
+            client_id=f(r, "client_id"),
+            symbol=f(r, "symbol"),
+            side=f(r, "side").upper(),
+            order_type=f(r, "order_type").upper(),
+            quantity=int(f(r, "quantity")),
+            limit=to_cents(f(r, "limit_price")) if f(r, "limit_price") else None,
+            tif=f(r, "tif").upper(),
         )
         for r in rows
     ]

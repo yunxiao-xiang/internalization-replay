@@ -13,6 +13,20 @@
 # 1.什么情况下需要internalize？
 
 我已经梳理出内部化(internalize)的三种触发情形——新增风险型(点差≥2¢、未近收盘、有仓位容量)、减仓型(无条件欢迎，帮公司出库存)、公司主动发起型(超软限时找客户限价单减仓)，其余情况一律路由到市场(route)。接下来我会基于这个规则框架继续分析代码逻辑。
+why 2 cents spread:
+┌──────────────────────────┬────────────────┬────────────────┐
+│                          │  2¢ baseline   │  3¢ threshold  │
+├──────────────────────────┼────────────────┼────────────────┤
+│ Internalized shares      │ 243,300        │ 97,400 (−60%)  │
+├──────────────────────────┼────────────────┼────────────────┤
+│ Routed shares            │ 232,200        │ 378,100        │
+├──────────────────────────┼────────────────┼────────────────┤
+│ Firm hedges              │ 20 (21,300 sh) │ 10 (14,600 sh) │
+├──────────────────────────┼────────────────┼────────────────┤
+│ Realized P&L             │ $14,396        │ $13,499        │
+├──────────────────────────┼────────────────┼────────────────┤
+│ Client price improvement │ $2,216         │ $1,119 (−49%)  │
+└──────────────────────────┴────────────────┴────────────────┘
 
 # principal fill at what price? 
 我已经整理出三种principal fill的定价规则（新增风险/减仓改善价、1¢点差按touch价、rebalance按客户限价成交），并明确了统一的NBBO约束断言，核心结论是客户成交价永远不劣于route，公司利润来自免对冲成本而非压价。
@@ -22,15 +36,34 @@ only internalize when reducing risk?
 on close 我们需要end the day flat
 收盘归零的可行性来自市场流动性假设而非book深度——即便book为空，市场单也能强制轧平，book只是省成本的优化；真正需要保证的是成本有界，靠±10k硬限和15:55起reduce-only把最坏残量压到很小。我已整理好这套答辩逻辑及生产环境下（MOC/LOC、限额线性收缩、TWAP分批）的应对方案
 
+hard stop on 15:55 (configurable) to take increasing risk, and by 16:00 MOC all remaining quantity on principal book
+
 # future
-1. principal book risk policy: (1) limit should shrink proportional to time left on that trading day (2)use markout analysis to rank client toxicity / market regime, can incorporate own prediction model to avoid adverse selection
+1. principal book risk policy: 
+(1) book position limit should shrink proportional to time left on that trading day, we can set the config risk limits as sth like: ADV * (remaining time / 390) * participation rate (~ 5%-10%), the number I hard-coded in config is much smaller thank the number calculated from the formula - 10,000 vs 32,000 (5mins & 5% participation)
+(2)use markout analysis to rank client toxicity: can apply per-client mulitplier to the "2 cents internalization spread", or can incorporate own prediction model to avoid adverse selection
+(3) internalization: we want to client get strictly better than touch (at least 1 cent), so we trade with 
+(4) firm hedge flow - we assumed we can execute all at top book (opposite level), in reality we need to decide execute how much aggressively (cross book at what limit price) vs passively (stay on limit and wait to be hit). we can calculate a PAV based on vol and its difference with bid / ask, set a threshold on how large this gap would be and decide whether execute aggressively / passively
+(5) one "drawback" of applying soft limit and hard limit on position - after hitting the soft limit, the strategy will only execute the qty above limit and passively wait for another offsetting client order coming in. However i tried to let principal book liquidate some shares when it stucks in soft limit (6000) and spread is 1 cent wide (idea is to aggressively execute some when its quiet), but it doesnt make too much difference as we get most flows in volatile times and spreads are wide at that time. One intuition here is we hold maximum of 6000 shares directional risk and resist taking more in volatile times.
 
-2. principal fill at what price? - swtich to principal book risk adjusted price later
-3. OMS?
-4. no impact / fee accounted for principal fill vs internalization, actually we should count that in before make decision to fill in market
-5. quote book can hold all data if we have tick data instead of orderbook snapshot - sometimes client can fill at not only NBBO （not needed as we made assumption "Assume routed orders fill immediately and completely at the prevailing market quote" and "All executions must occur at or within the current market best bid/ask (NBBO) at the time of the fill."
+2. principal fill at mid rounded towards principal book's side, later can swtich to principal book risk adjusted price later
+3. no impact / fee accounted for principal fill vs internalization, actually we should count that in before make decision to fill in market
+4. quote book can hold all data if we have tick data instead of orderbook snapshot - sometimes client can fill at not only NBBO （not needed as we made assumption "Assume routed orders fill immediately and completely at the prevailing market quote" and "All executions must occur at or within the current market best bid/ask (NBBO) at the time of the fill."
 
-
+why 2 cents spread:
+┌──────────────────────────┬────────────────┬────────────────┐
+│                          │  2¢ baseline   │  3¢ threshold  │
+├──────────────────────────┼────────────────┼────────────────┤
+│ Internalized shares      │ 243,300        │ 97,400 (−60%)  │
+├──────────────────────────┼────────────────┼────────────────┤
+│ Routed shares            │ 232,200        │ 378,100        │
+├──────────────────────────┼────────────────┼────────────────┤
+│ Firm hedges              │ 20 (21,300 sh) │ 10 (14,600 sh) │
+├──────────────────────────┼────────────────┼────────────────┤
+│ Realized P&L             │ $14,396        │ $13,499        │
+├──────────────────────────┼────────────────┼────────────────┤
+│ Client price improvement │ $2,216         │ $1,119 (−49%)  │
+└──────────────────────────┴────────────────┴────────────────┘
 
 
 Makes an execution decision for every order (and re-evaluates resting orders as the market moves). Your strategy decides, at minimum:
@@ -83,3 +116,10 @@ Marketable 流量在单边行情里是逆向选择——客户在跌势里砸给
 答辩收尾句："我的 policy 把'该不该 internalize'拆成四个可独立辩护的判断——每个参数都能说出它防的是哪种损失，以及放宽它会在哪一天亏钱。"
 
 有想深入的维度，或者要我模拟面试官对这套框架追问吗？
+
+
+on_order 的实际次序：
+
+1. 先尝试 cross（只需限价窗口与 NBBO 重叠，不要求 marketable）；
+2. 判断 marketable（买限价 ≥ ask / 卖限价 ≤ bid）——只有 marketable 的订单才进入 principal_quote 定价；
+3. 非 marketable 的残量：DAY → rest 进 book，IOC → 取消。
