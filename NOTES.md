@@ -50,6 +50,33 @@ hard stop on 15:55 (configurable) to take increasing risk, and by 16:00 MOC all 
 3. no impact / fee accounted for execution vs internalization, actually we should count that in before make decision to fill in market
 4. quote book can hold all data if we have tick data instead of orderbook snapshot - sometimes client can fill at not only NBBO （not needed as we made assumption "Assume routed orders fill immediately and completely at the prevailing market quote" and "All executions must occur at or within the current market best bid/ask (NBBO) at the time of the fill."
 
+# 在刚刚提到的-6000 加入2000全额接的情况下，是否可以先scan resting book再决定是否internalize，直接接并且触发rebalance的话net benefit不变，但是client eat掉了一部分firm pnl，resting book没有offseting order的话是否应该考虑不接？或者resting book里面有多少接多少，其余的直接agency execution
+
+这个提议是对的——而且在模型假设下严格占优。逐层拆：
+
+1. 你的"net benefit 不变、client 吃掉 firm P&L"判断，数学上成立。
+钉在 −6,000 时接 BUY 2,000 @ B+2（ask−1），rebalance 立即市场对冲残量 @ ask=B+3：公x司每股 −1¢，客户每股 +1¢（相对 route）——同 tick、同 NBBO 下这是精确的零和转移，公司白送。因为超软限部分是"即时对冲"，连"等未来反向流免费消化"的期权价值都不存在（那是 band 以内仓位的辩护，不适用于超限增量）。
+
+2. 所以正确的接单量公式是：
+
+▎ internalize qty = (到软限的余量) + (resting book 里有利可图的对手方深度)，其余 route
+
+两个细节：
+- "有利可图" = resting sell 的 limit ≤ 成交价 B+2。买回价高于你卖出价的 cover 是亏的——L ∈ (B+2, ask] 的挂单不该算进 coverage，那部分也 route；
+- "完全不接"不存在——永远不是拒单，是 route（客户拿 touch，和你不接他一样，没人受损）。书里空、又钉在软限 → internalize qty = 0，全 route，等价于你说的"不接"。
+
+3. 和 skew quoting 的关系——这是答辩的升华点：
+两者是同一个思想的离散版和连续版：都是把边际对冲成本定价进接单决策。
+- Book-scan gating（你的方案）：价格不动（仍给 mid 改善），数量上只接对冲成本 ≤ 0 的部分——离散、二值；
+- Skew pricing：数量不动，价格随仓位从 mid 滑向 touch，让边际不划算的流量被价格劝退——连续、平滑。
+- 生产里两个都要：skew 做常态调节，book-scan 做钉仓时的硬保护。你的方案还有个实现优势：resting book 是当前状态，扫它不违反 no-lookahead，且复用 rebalance 已有的遍历逻辑。
+
+4. 要主动交代的两个 caveat：
+- 当天实证影响很小——只有钉仓时刻受影响，全天市场对冲仅 20 笔 / $385，这是个尾部优化不是主收益源；
+- 客户体验不对称：同样的单，book 深时拿 mid 改善、book 空时被 route——对客户仍然"永不差于 route"（底线不破），但 improvement 变得依赖他人挂单，best-ex 报告里要能解释这个条件性。
+
+一句话收尾："超软限的增量流量，接单的 EV 完全等于 rebalance 的出口质量——所以决策应该先看出口（scan book）再接单，接多少由有利出口的深度决定；这和 skew pricing 是同一枚硬币的数量面和价格面。"
+
 why 2 cents spread:
 ┌──────────────────────────┬────────────────┬────────────────┐
 │                          │  2¢ baseline   │  3¢ threshold  │
