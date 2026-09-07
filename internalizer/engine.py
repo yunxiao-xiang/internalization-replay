@@ -29,12 +29,19 @@ class Engine:
         self.quote: Quote | None = None
         self.position = 0     # shares, signed
         self.cash = 0         # cents, from principal trading only
+        self._over_since: datetime | None = None   # when |pos| first exceeded bleed_trigger
 
     # ---------- event handlers ----------
     def on_quote(self, q: Quote) -> None:
         self.quote = q
         self._sweep(q.ts)
         self._rebalance(q.ts, self.cfg.soft_position_limit)
+        over = ((q.ts - self._over_since).total_seconds()
+                if self._over_since else None)
+        target = self.strat.bleed_target(q.spread, self.position, over)
+        if target is not None:
+            self._rebalance(q.ts, target)
+        self._track_inventory_age(q.ts)
 
     def on_order(self, o: Order) -> None:
         assert self.quote is not None, "order arrived before first quote"
@@ -47,6 +54,7 @@ class Engine:
             else:
                 self.book.add(o)
         self._rebalance(o.ts, self.cfg.soft_position_limit)
+        self._track_inventory_age(o.ts)
 
     def on_close(self) -> None:
         ts = datetime.combine(self.quote.ts.date(), CLOSE)
@@ -113,6 +121,14 @@ class Engine:
                 self._execute_marketable(s, ts)
                 continue
             return
+
+    def _track_inventory_age(self, ts: datetime) -> None:
+        """Clock for bleed trigger B: how long |pos| has sat above the trigger."""
+        if abs(self.position) > self.cfg.bleed_trigger:
+            if self._over_since is None:
+                self._over_since = ts
+        else:
+            self._over_since = None
 
     # ---------- inventory management ----------
     def _rebalance(self, ts: datetime, target: int) -> None:

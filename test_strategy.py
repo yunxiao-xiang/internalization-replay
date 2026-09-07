@@ -79,6 +79,18 @@ def test_principal_quote_no_new_risk_late():
     assert (qty, px) == (1000, 24480)
 
 
+def test_bleed_target_dual_trigger():
+    # below trigger: never fires
+    assert S.bleed_target(1, 3000, over_secs=9999) is None
+    # above trigger + cheap spread (A): reduce to trigger
+    assert S.bleed_target(1, 5000, over_secs=None) == 4000
+    assert S.bleed_target(1, -5000, over_secs=None) == 4000
+    # above trigger + wide spread + young position: hold
+    assert S.bleed_target(3, 5000, over_secs=120) is None
+    # above trigger + wide spread + aged past 10 min (B): reduce anyway
+    assert S.bleed_target(3, 5000, over_secs=600) == 4000
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for fn in fns:

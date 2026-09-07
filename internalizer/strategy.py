@@ -35,6 +35,11 @@ class Config:
     hard_position_limit: int = 10_000     # shares; firm never exceeds this, long or short
     soft_position_limit: int = 6_000      # hedge back inside this band when breached
     no_new_risk_after: time = time(15, 55)
+    # proactive bleed (v0.2): hedge band inventory down to bleed_trigger when
+    # (A) the spread is cheap, or (B) the position has aged past age_limit
+    bleed_trigger: int = 4_000            # shares; bleed fires above this, reduces to it
+    cheap_spread_max: int = 1             # cents; trigger A when spread <= this
+    age_limit_secs: int = 600             # trigger B when |pos| > trigger this long
 
 
 class Strategy:
@@ -103,3 +108,21 @@ class Strategy:
             return qty, px
 
         return 0, 0
+
+    def bleed_target(self, spread: int, position: int,
+                     over_secs: float | None) -> int | None:
+        """Proactive hedge of band inventory: target |position|, or None.
+
+        Fires only above bleed_trigger, via two observable triggers (no
+        forecasts): (A) the spread is at its cheapest, so the half-spread
+        hedge cost is minimal; (B) the position has sat above the trigger for
+        age_limit_secs — realized evidence that offsetting flow is not
+        coming, so the netting option has decayed.
+        """
+        if abs(position) <= self.cfg.bleed_trigger:
+            return None
+        if spread <= self.cfg.cheap_spread_max:
+            return self.cfg.bleed_trigger
+        if over_secs is not None and over_secs >= self.cfg.age_limit_secs:
+            return self.cfg.bleed_trigger
+        return None

@@ -33,6 +33,9 @@ STRATEGY = StrategyConfig(
     hard_position_limit=10_000,      # shares; principal fills are sized so this never breaches
     soft_position_limit=6_000,       # hedge back inside this band when breached
     no_new_risk_after=time(15, 55),  # reduce-only from here to the close
+    bleed_trigger=4_000,             # v0.2: proactive bleed fires above this, reduces to it
+    cheap_spread_max=1,              # trigger A: spread <= 1c (cheapest hedge windows)
+    age_limit_secs=600,              # trigger B: |pos| aged 10 min above trigger
 )
 
 
