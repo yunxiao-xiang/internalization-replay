@@ -49,10 +49,26 @@ def test_principal_quote_tight_spread_reduces_inventory_at_touch():
     assert (qty, px) == (500, 24479)
 
 
-def test_principal_quote_respects_hard_limit():
-    # firm already short 9,500; client buy of 1,000 would breach -10,000
+def test_principal_quote_soft_limit_gates_new_risk():
+    # v0.1: beyond the soft band, new risk needs profitable book coverage
+    # firm short 9,500 (past soft): no coverage -> decline entirely
     qty, _ = S.principal_quote(order("BUY"), -9500, TS, 24478, 24481)
+    assert qty == 0
+    # with coverage, the hard limit still truncates (cap = -9500 + 10000)
+    qty, _ = S.principal_quote(order("BUY"), -9500, TS, 24478, 24481, coverage=2000)
     assert qty == 500
+
+
+def test_principal_quote_pinned_at_soft_needs_coverage():
+    # pinned at -6,000, client BUY 2,000, spread 3c
+    qty, _ = S.principal_quote(order("BUY", 2000), -6000, TS, 24478, 24481)
+    assert qty == 0                     # empty book: route everything
+    qty, px = S.principal_quote(order("BUY", 2000), -6000, TS, 24478, 24481,
+                                coverage=800)
+    assert (qty, px) == (800, 24480)    # take what the book can offset
+    qty, _ = S.principal_quote(order("BUY", 2000), -6000, TS, 24478, 24481,
+                               coverage=5000)
+    assert qty == 2000                  # coverage beyond the order just fills it
 
 
 def test_principal_quote_no_new_risk_late():
