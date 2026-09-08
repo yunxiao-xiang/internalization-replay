@@ -124,6 +124,17 @@ last quote as the prevailing NBBO.
 5. **Costs:** net exchange fees and market impact into internalize-vs-route.
 6. **Data:** with tick/depth data, routed fills could walk the book instead
    of filling at the displayed touch.
-7. **Plumbing:** explicit OMS state machine with client execution reports,
+7. **Order book for real message flow:** live flow is dominated by
+   cancel/replace, where the heap book degrades to O(n). Implemented as a
+   swappable variant (`book_dict.py` / `engine_dict.py`): price-level dict +
+   order-id index + sorted price ladder gives O(1) cancel (hash to the node,
+   pointer-surgery it out) with `on_cancel` semantics where a cancel racing a
+   fill loses; a full-replay parity test proves fills, hedges, and cash
+   identical to the heap engine. Data-structure choice follows the message
+   mix: heaps for fill-only flow, the three-piece book once cancels arrive.
+8. **Plumbing:** explicit OMS state machine with client execution reports,
    journaled fills/position for intraday restart, and `validate.py` run
    post-trade as an independent compliance process.
+
+**new**
+**to cancel replace order heapq is no longer optimal as retrevial takes O(logn)**
