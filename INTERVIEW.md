@@ -180,3 +180,25 @@ out instead of a hard cutoff rejecting profitable flow along with it."
 
 **收尾句**：validate.py 证明"没有一笔违法成交"，对漏做的事、共享代码的共同错觉、
 合法区间内的错误决策三者天然失明——防线的价值恰恰在于知道每道防线不防什么。
+
+## Q4: Cross 定价——resting SELL 244.79 × incoming BUY 244.83，NBBO 244.78/244.82
+
+**结合后的答案**（我的回答 + 修正）：
+
+1. **成交价 = 244.80，不是我算的 244.81**：`cross_price` 锚定 **NBBO mid**
+   `(bid+ask)//2 = 244.80`，不是两个限价的 mid；窗口 lo = max(bid, 244.79) = 244.79，
+   hi = min(**ask**, 244.83) = 244.82（上界被 ask 卡住不是买方限价）。244.80 在窗口内，
+   免 clamp。教训：报数字前先跑一遍自己的代码。
+2. 改善分配：vs touch 双方各 +2¢（对称）——锚定市场公允价平均分，刻意无视先来后到
+   与限价激进度；限价只在 clamp 时起作用。
+3. 行为分析（我答"maker 不会变"，漏了本质）：**我们的 cross 就是 midpoint dark pool**。
+   交易所惯例 maker 只拿自己的限价（改善全归 taker）；midpoint 规则给 maker 优于
+   限价的价——对 maker 慷慨，代价由 taker 让渡，公平性无碍。真正的扭曲：卖方限价
+   ≤ mid 时收到的都是 mid → **激进化报价免费**（提高被 cross 概率、不损价格）→
+   理性 maker 压价到 mid 附近；随之而来 dark pool 的已知弊病：**quote fade / NBBO mid
+   操纵**可以移动内部 cross 成交价。我答对的部分：更 passive（卖方抬价）降低 fill
+   likelihood；MM 在交易所同样无 improvement、只有 fee 差异。
+
+**收尾句**：midpoint cross 的公平性没问题——它比交易所惯例对 maker 更慷慨；
+要审视的是激励（免费激进化）与可操纵性（mid 依赖），这正是真实 midpoint venue
+挂 anti-gaming 逻辑的原因。
