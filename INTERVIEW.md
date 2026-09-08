@@ -202,3 +202,25 @@ out instead of a hard cutoff rejecting profitable flow along with it."
 **收尾句**：midpoint cross 的公平性没问题——它比交易所惯例对 maker 更慷慨；
 要审视的是激励（免费激进化）与可操纵性（mid 依赖），这正是真实 midpoint venue
 挂 anti-gaming 逻辑的原因。
+
+## Q5: Desk head 问"明天的期望 P&L 是多少？数、区间、置信来源"
+
+**结合后的答案**（我的洞察 + 补上的报数纪律）：
+
+- **我的亮点（保留）**：库存方向不是巧合——仓位 ≡ −净客户流，客户流是市场压力
+  缩影，策略结构性站在压力对面；压力冲击若暂时则 drift 期望为正。**引用自己的
+  markout 证据**：internalized flow 10min markout −4.25¢/股（价格向客户反方向回归）。
+- **模范报数**：
+  - Edge：E ≈ +$400/天，σ ±$150（今天 $379 = 客户侧 +$460 − 对冲 $82；驱动 =
+    volume × spread 分布，日间稳定）——策略的"工资"；
+  - Drift：E ≈ 0 到小正（martingale 下 0；uninformed-flow 下为正，markout 支持但
+    n=1 不许入账）；σ ≈ 时间加权 |pos| 1,456 × 日内路径 $2–3 ≈ ±$3–6k；
+    尾部被 band 封顶 ≈ ±$15k；
+  - **合计：E ≈ +$400，1σ ±$5k，尾部 ±$15k；今天 +$15k 是一次 +3σ 实现。**
+- **口径纠错**：对 mid 的 edge 是 0–0.5¢/股（+touch 半点差），"1–3¢"是对 touch 的
+  客户改善口径——别混。
+- **Run/no-run（别答成改进清单）**：跑——edge 期望独立为正、drift 尾部有界；
+  预算与考核锚定 edge（~$400/天），drift 记噪声；优先级 = 压缩 drift 方差
+  （skew、vol-band），并积累多日 markout，显著后才把回归溢价计入期望。
+
+**模板**：E(edge) + E(drift) ± σ(drift)，尾部 = band × 极端路径，最后一句 run/no-run。
