@@ -56,6 +56,18 @@ class Engine:
         self._rebalance(o.ts, self.cfg.soft_position_limit)
         self._track_inventory_age(o.ts)
 
+    def on_cancel(self, order_id: str, ts: datetime) -> bool:
+        """Client cancel of a resting order, heap-book style: O(1) lookup via
+        the book's id dict, then the standard CANCELLED transition. The heap
+        entry is left behind as a tombstone (remaining == 0) and buried by
+        the next peek - no heap surgery. A cancel racing a fill returns False
+        and the fill stands. Position and cash are untouched."""
+        order = self.book.find(order_id)
+        if order is None:
+            return False
+        self._close_order(order, "CANCELLED")
+        return True
+
     def on_close(self) -> None:
         ts = datetime.combine(self.quote.ts.date(), CLOSE)
         self._sweep(ts)                # last chance to execute against final NBBO

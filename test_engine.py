@@ -62,6 +62,19 @@ def test_market_through_resting_sell_limit_fills_inside_new_nbbo():
     assert px >= 19005, f"filled at {px}, below the new bid"   # never 190.01
 
 
+def test_on_cancel_tombstones_resting_order():
+    eng = make_engine()
+    eng.on_quote(quote(18999, 19002))
+    o = Order("O1", D, "C1", "AAPL", "BUY", "LIMIT", 500, 19000, "DAY")
+    eng.on_order(o)                            # inside spread: rests
+    assert eng.on_cancel("O1", D) is True
+    assert o.closed_as == "CANCELLED" and o.remaining == 0
+    assert eng.book.best_buy() is None         # tombstone buried at next peek
+    assert eng.on_cancel("O1", D) is False     # already dead: cancel loses
+    assert eng.on_cancel("NOPE", D) is False   # unknown id
+    assert eng.position == 0 and eng.cash == 0
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for fn in fns:

@@ -38,6 +38,12 @@ class OrderBook:
     def best_sell(self) -> Order | None:
         return self._peek(self._sells)
 
+    def find(self, order_id: str) -> Order | None:
+        """Live resting order by id, or None. O(1) via the _open dict; the
+        heap entry itself is untouched (cancellation just tombstones it)."""
+        o = self._open.get(order_id)
+        return o if o is not None and o.remaining > 0 else None
+
     def open_orders(self) -> list[Order]:
         return [o for o in self._open.values() if o.remaining > 0]
 
