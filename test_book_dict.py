@@ -50,6 +50,21 @@ def test_priority_and_peek():
     assert b.coverage("BUY", 24479) == 200
 
 
+def test_engine_on_cancel():
+    from internalizer.models import Quote
+    rep = Reporter()
+    eng = DictEngine(Strategy(config.STRATEGY), rep)
+    eng.on_quote(Quote(D, "AAPL", 24478, 100, 24481, 100))
+    o = order("R1", "BUY", 500, 24479)      # inside spread: rests
+    eng.on_order(o)
+    assert eng.book.best_buy().order_id == "R1"
+    assert eng.on_cancel("R1", D) is True   # O(1) removal + terminal transition
+    assert o.closed_as == "CANCELLED" and o.remaining == 0
+    assert eng.book.best_buy() is None
+    assert eng.on_cancel("R1", D) is False  # cancel racing a fill / unknown: no-op
+    assert eng.position == 0 and eng.cash == 0
+
+
 def test_cancel_o1_path():
     b = DictOrderBook()
     b.add(order("A", "SELL", 100, 24481))
