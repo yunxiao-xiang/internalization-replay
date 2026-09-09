@@ -35,9 +35,10 @@ class Engine:
     def on_quote(self, q: Quote) -> None:
         self.quote = q
         self._sweep(q.ts) # sweep order book
-        self._rebalance(q.ts, self.cfg.soft_position_limit)
+        self._rebalance(q.ts, self.cfg.soft_position_limit)  # hedge book, needed if we hedge based on spread width
         over = ((q.ts - self._over_since).total_seconds()
-                if self._over_since else None)
+                if self._over_since else None) # record how long position has been over bleed trigger
+        # addtional bleeding target - if position is too old or spread is cheap (1c)
         target = self.strat.bleed_target(q.spread, self.position, over)
         if target is not None:
             self._rebalance(q.ts, target)
@@ -45,7 +46,8 @@ class Engine:
 
     def on_order(self, o: Order) -> None:
         assert self.quote is not None, "order arrived before first quote"
-        self._try_cross(o, o.ts)
+        self._try_cross(o, o.ts) # try cross with resting book first
+        # execute the marketable portion
         if o.remaining and self._marketable(o):
             self._execute_marketable(o, o.ts)
         if o.remaining:
@@ -83,6 +85,7 @@ class Engine:
         return o.limit >= self.quote.ask if o.side == "BUY" else o.limit <= self.quote.bid
 
     def _try_cross(self, o: Order, ts: datetime) -> None:
+        """try to cross for incoming order"""
         q = self.quote
         while o.remaining:
             opp = self.book.best_sell() if o.side == "BUY" else self.book.best_buy()
@@ -99,12 +102,8 @@ class Engine:
 
     def _execute_marketable(self, o: Order, ts: datetime) -> None:
         q = self.quote
-        # profitable unwind depth in the resting book at the candidate price:
-        # a client BUY is offset by resting sells at or below the fill price
-        probe = self.strat.improved_price(o.side, q.bid, q.ask)
-        cover = self.book.coverage("SELL" if o.side == "BUY" else "BUY", probe)
-        qty, px = self.strat.principal_quote(o, self.position, ts, q.bid, q.ask,
-                                             cover)
+        # check with principal book for internalization firt(offloading principal risk)
+        qty, px = self.strat.principal_quote(o, self.position, ts, q.bid, q.ask)
         if qty:
             self._fill(ts, o, qty, px, "PRINCIPAL", "INTERNAL")
         if o.remaining:
@@ -118,7 +117,7 @@ class Engine:
         q = self.quote
         while True:
             b, s = self.book.best_buy(), self.book.best_sell()
-            # try cross first? -- cross never happened in on_quote->sweep in backtesting
+            # try cross first? -- cross never happened in on_quote->sweep in backtesting, but kept because its nearly
             if b and s:
                 # window of cross
                 win = self.strat.cross_window(b.limit, s.limit, q.bid, q.ask)

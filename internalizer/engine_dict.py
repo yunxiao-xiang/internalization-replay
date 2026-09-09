@@ -95,12 +95,7 @@ class DictEngine:
 
     def _execute_marketable(self, o: Order, ts: datetime) -> None:
         q = self.quote
-        # profitable unwind depth in the resting book at the candidate price:
-        # a client BUY is offset by resting sells at or below the fill price
-        probe = self.strat.improved_price(o.side, q.bid, q.ask)
-        cover = self.book.coverage("SELL" if o.side == "BUY" else "BUY", probe)
-        qty, px = self.strat.principal_quote(o, self.position, ts, q.bid, q.ask,
-                                             cover)
+        qty, px = self.strat.principal_quote(o, self.position, ts, q.bid, q.ask)
         if qty:
             self._fill(ts, o, qty, px, "PRINCIPAL", "INTERNAL")
         if o.remaining:

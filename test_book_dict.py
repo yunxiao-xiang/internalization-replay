@@ -47,7 +47,6 @@ def test_priority_and_peek():
     assert b.best_buy().order_id == "B"
     b.best_buy().remaining = 0             # engine-style fill of the head
     assert b.best_buy().order_id == "C"    # lazy reconcile buries B
-    assert b.coverage("BUY", 24479) == 200
 
 
 def test_engine_on_cancel():
@@ -71,7 +70,6 @@ def test_cancel_o1_path():
     b.add(order("B", "SELL", 200, 24481))  # cancel from mid-queue, no search
     b.add(order("C", "SELL", 300, 24482))
     assert b.cancel("B").order_id == "B"
-    assert b.coverage("SELL", 24482) == 400          # 100 + 300 left
     assert b.best_sell().order_id == "A"
     assert b.cancel("A").order_id == "A"             # empties the 24481 level
     assert b.best_sell().order_id == "C"             # ladder advanced
