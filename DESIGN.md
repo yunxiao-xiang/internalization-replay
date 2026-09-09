@@ -1,12 +1,12 @@
 <style>
-body { font-size: 11pt; line-height: 1.3; }
+body { font-size: 11pt; line-height: 1.26; }
 h1 { font-size: 15pt; font-weight: 700; margin: 0 0 5pt; line-height: 1.2; }
-h2 { font-size: 13pt; font-weight: 700; margin: 10pt 0 4pt; line-height: 1.2; }
-p { margin: 0 0 8pt; }
+h2 { font-size: 13pt; font-weight: 700; margin: 8pt 0 3pt; line-height: 1.2; }
+p { margin: 0 0 6pt; }
 table { font-size: 10pt; margin: 4pt 0 8pt; width: auto; }
 th, td { padding: 0.5pt 10pt 0.5pt 0; }
 ol, ul { margin: 0 0 4pt; padding-left: 14pt; }
-li { margin: 0 0 3pt; line-height: 1.3; }
+li { margin: 0 0 2pt; line-height: 1.28; }
 </style>
 
 # Design Write-up
@@ -56,9 +56,9 @@ choice; rerunning the day at 3¢:
 | Realized P&L | $14,396 | $13,499 |
 | Client price improvement | $2,216 | $1,119 (−49%) |
 
-Raising the threshold forfeits the 2¢ bucket, the day's largest:
-internalization drops 60% and client improvement halves while firm P&L
-barely moves. Two exceptions price differently: inventory-reducing flow at a
+Raising it forfeits the 2¢ bucket, the day's largest: internalization drops
+60% and client improvement halves while firm P&L barely moves. Two exceptions
+price differently: inventory-reducing flow at a
 1¢ spread fills at the touch (client matches routing; firm exits without
 paying the spread), and the rebalancer fills resting inside-spread limits at
 the client's own price, a cheaper exit than hedging.
@@ -68,9 +68,9 @@ truncated to remaining capacity, residual routed, so a breach cannot happen.
 A soft band of ±6,000 triggers immediate reduction, resting orders first,
 market second. From 15:55 the firm is reduce-only; at 16:00 it flattens (this
 day it was flat by 13:45 through client flow; the 17 leftover DAY orders
-expired, the only disposition that respects their limits). 10k is ~0.02% of
-AAPL's ADV and ~1.6% of last-five-minutes volume, so the forced flatten is
-always liquid; the limit comes from the risk budget, not liquidity.
+expired, the only disposition respecting their limits). 10k is ~0.02% of ADV
+and ~1.6% of last-five-minutes volume, so the flatten is always liquid; the
+limit comes from the risk budget, not liquidity.
 
 **What is optimized, and the honest accounting.** The objective is spread
 capture net of hedging costs, subject to never disadvantaging a client versus
@@ -124,14 +124,20 @@ last quote as the prevailing NBBO.
 5. **Costs:** net exchange fees and market impact into internalize-vs-route.
 6. **Data:** with tick/depth data, routed fills could walk the book instead
    of filling at the displayed touch.
-7. **Order book for real message flow:** live flow is dominated by
+7. **Order book and amend for real message flow:** live flow is dominated by
    cancel/replace, where the heap book degrades to O(n). Implemented as a
    swappable variant (`book_dict.py` / `engine_dict.py`): price-level dict +
    order-id index + sorted price ladder gives O(1) cancel (hash to the node,
    pointer-surgery it out) with `on_cancel` semantics where a cancel racing a
    fill loses; a full-replay parity test proves fills, hedges, and cash
-   identical to the heap engine. Data-structure choice follows the message
-   mix: heaps for fill-only flow, the three-piece book once cancels arrive.
+   identical to the heap engine. Amends need their own entry point,
+   `on_amend(order_id, new_limit, new_qty, ts)`, not `on_order`: the order is
+   already on the book, queue priority must be explicit (a price change or
+   size increase re-queues at the back; a size decrease keeps its place), and
+   the waterfall then re-runs on the new limit. Amends are also what makes the
+   resting-vs-resting cross branch in `_sweep` reachable — with static limits
+   it is provably dead, since an overlapping pair would have crossed or
+   executed on arrival. Data-structure choice follows the message mix.
 8. **Plumbing:** explicit OMS state machine with client execution reports,
    journaled fills/position for intraday restart, and `validate.py` run
    post-trade as an independent compliance process.

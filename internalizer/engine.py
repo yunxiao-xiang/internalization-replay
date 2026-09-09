@@ -118,16 +118,18 @@ class Engine:
         q = self.quote
         while True:
             b, s = self.book.best_buy(), self.book.best_sell()
+            # try cross first? -- cross never happened in on_quote->sweep in backtesting
             if b and s:
                 # window of cross
                 win = self.strat.cross_window(b.limit, s.limit, q.bid, q.ask)
                 if win:
-                    # cross price determined by mkt mid - adjusted within the window
+                    # cross price determined by mkt mid - clamped within the window, both side still get improvement
                     px = self.strat.cross_price(win, q.bid, q.ask)
                     qty = min(b.remaining, s.remaining)
                     self._fill(ts, b, qty, px, "AGENCY", "CROSS")
                     self._fill(ts, s, qty, px, "AGENCY", "CROSS")
                     continue
+            # after cross see if anything is executable in market (if the order is already in market prob do this first)
             if b and b.limit >= q.ask:
                 self._execute_marketable(b, ts)
                 continue
@@ -178,10 +180,12 @@ class Engine:
     def _fill(self, ts: datetime, order: Order, qty: int, px: int,
               capacity: str, venue: str) -> None:
         q = self.quote
+        # check price within NBBO
         if not (q.bid <= px <= q.ask):
             raise ComplianceError(
                 f"fill {fmt_price(px)} outside NBBO {fmt_price(q.bid)}/{fmt_price(q.ask)} "
                 f"for {order.order_id} at {fmt_ts(ts)}")
+        # check price with limit
         if order.limit is not None:
             if order.side == "BUY":
                 assert px <= order.limit, f"buy filled above limit: {order.order_id}"
@@ -189,6 +193,7 @@ class Engine:
                 assert px >= order.limit, f"sell filled below limit: {order.order_id}"
         assert 0 < qty <= order.remaining
         order.remaining -= qty
+        # modify static variable if it goes from principal book
         if capacity == "PRINCIPAL":
             if order.side == "BUY":     # firm sells to the client
                 self.position -= qty

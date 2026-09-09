@@ -265,3 +265,57 @@ mid 244.90 < lo → clamp 上抬 → **成交 244.91**。
 **金句**：同一个相关性，在期望里叫流动性提供溢价，在方差公式里叫假设失效。
 
 **修正后的 Q5 报数**：E ≈ +$400，1σ ≈ ±$3.3k，尾部 ≈ band 6,000 × 极端路径 ≈ ±$15k。
+
+## Q6: sweep 里的 resting-vs-resting cross 分支——我们还有机会 cross 吗？
+
+**我的直觉（正确）**：客户单进来时没 cross 就已经 route 走了；行情移动后变
+marketable 的单被 sweep 的 marketable 分支吃掉——所以 sweep 的 cross 分支似乎轮不到。
+
+**升级为证明（当前规则下该分支不可达）**：
+设两张 resting 单限价重叠（bL ≥ sL），看后到的那张（设为卖单）到达时刻：
+1. 它没被 `_try_cross` 撮合 ⇒ 窗口空：max(bid, sL) > min(ask, bL)；
+2. 它挂进了 book ⇒ 非 marketable：sL > bid；
+3. 由 1+2 得 lo = sL 且 sL > min(ask, bL)；又 sL ≤ bL ⇒ **sL > ask** ⇒
+   bL ≥ sL > ask ⇒ 先到的买单早已 marketable——但 sweep 每 tick 跑且 quote 先于
+   order 处理，marketable 的单不可能还挂着。矛盾。买卖对调对称。
+⇒ 重叠的 resting 对从不共存；限价静态 ⇒ 之后的 NBBO 移动也造不出重叠。
+
+**实证**：当天 7 组 cross（14 行）的成交时间戳全部 == 后到那条腿的 arrival 时刻，
+sweep 的 cross 分支全天零触发。这也回答了"cross 为何只有 1,600 股"的另一半：
+不是撮合不积极，而是结构上 cross 的唯一窗口就是订单到达那一瞬。
+
+**不可达性依赖四个前提**（任一松动它就复活）：cross-at-arrival、每 tick sweep、
+**限价静态**、quote 先于 order。三个复活场景：
+1. **amend/replace**（最现实）：#A SELL 244.83 与 #B BUY 244.81 各自挂着（窗口空），
+   客户把 #A 改到 244.80 → 下个 quote 的 sweep 得到窗口 [244.80, 244.81] → cross。
+2. **sweep 漏跑/conflation**（生产必然）：积压导致 marketable 单没被处理，书里出现
+   重叠——但注意此时 NBBO 往往已跑到两个限价之外，窗口仍可能是空的，说明该分支
+   在生产里也是低频兜底而非主路径。
+3. **改设计**（speed bump / conditional order）：marketable 单停留 200ms 等对手方——
+   打破 cross-at-arrival。代价正是我们当初拒绝的理由（扣留客户可执行订单），
+   除非像 IEX 那样把 speed bump 作为公开披露的场地规则。
+
+### Q6-追问 1: amend 应该在 on_order 里处理吗？
+
+**不应该——独立入口 `on_amend(order_id, new_limit, new_qty, ts)`，逻辑复用。**
+`on_order` 假设"从未见过的新单"：跑完 waterfall 然后 `book.add()`。amend 面对已在册
+订单，必须先取出旧状态，且要显式实现**队列优先级惯例**：改价或增量 → 失去时间
+优先级、按新价排队尾；仅减量 → 保留原位。这条规则在 `on_order` 里没有位置放。
+替代方案是拆成 cancel + new（FIX 常见），代价是中间有个"两边都没挂"的窗口。
+两种做法改完都要立刻重跑 waterfall（新限价可能当场 marketable 或可 cross）——
+**共享的是执行逻辑，不是入口**。已写入 DESIGN production changes 第 7 条。
+
+### Q6-追问 2: sweep 可能跑不完时，删掉 cross 检查能否降延迟？
+
+**不能删——但直觉指向的优化方向对，只是位置错了。**
+1. **它已近乎免费**：两个 `best_*` peek（O(1)，且本来就要取来做 marketable 判断）
+   加一次纯算术 `cross_window`；删掉省几十纳秒。同一函数里真正贵的是
+   `_execute_marketable` → `coverage()` 的 O(N) 扫书——**要砍延迟砍那个**。
+2. **逻辑自相矛盾**：它不可达恰恰依赖"每 tick sweep 完整跑"；一旦假设 sweep 会
+   漏跑（正是删它的理由），重叠就可能出现，此时被删的分支正是最后的守卫。
+3. **正解是分层不是删除**：快路径只做 NBBO 更新 + top-of-book 可执行性判断；
+   cross 检查/coverage/bleed 用脏标志（`crossable_dirty`）或定时器移出快路径，
+   让 99% 的安静 tick 走最短路径。
+
+**金句**：删除一个不可达分支的收益是纳秒级，代价是把隐式不变量变成隐患——
+尤其当你删它的理由，恰好也是它可能变得可达的理由。
