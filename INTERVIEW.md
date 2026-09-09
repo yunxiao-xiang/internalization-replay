@@ -203,6 +203,27 @@ out instead of a hard cutoff rejecting profitable flow along with it."
 要审视的是激励（免费激进化）与可操纵性（mid 依赖），这正是真实 midpoint venue
 挂 anti-gaming 逻辑的原因。
 
+### Q4-补充: clamp 的含义与 mid 出窗的情形
+
+`cross_price` 一行：`px = min(max(mid, lo), hi)` —— 把 NBBO mid "夹"进窗口，
+只挪到最近的合法边界为止。
+
+例：NBBO 244.88/244.92（mid 244.90），sell limit 244.91，buy limit 244.93：
+lo = max(244.88, 244.91) = 244.91；hi = min(**244.92**, 244.93) = 244.92（ask 卡上界）；
+mid 244.90 < lo → clamp 上抬 → **成交 244.91**。
+
+| mid 位置 | 成交价 | 改善分配 |
+|---|---|---|
+| 窗口内 | mid | 双方对称 |
+| mid < lo（卖方限价/bid 绑定） | lo | 卖方恰拿限价，改善倾斜给买方 |
+| mid > hi（买方限价/ask 绑定） | hi | 买方恰拿限价，改善倾斜给卖方 |
+| lo > hi | 不 cross | window 为 None → internalize/route |
+
+被 clamp 的一方拿到恰好自己的限价（对比 route 仍更优：本例卖方 vs bid +3¢）；
+剩余改善全部归对方（买方付 244.91，比限价好 2¢、比 ask 好 1¢）。
+细节：本例买方 limit ≥ ask 本身 marketable，但 `_try_cross` 排在 marketability
+判断之前 → 先 cross 在 244.91，比 route 还好 1¢——"cross 优先"价值的具体展示。
+
 ## Q5: Desk head 问"明天的期望 P&L 是多少？数、区间、置信来源"
 
 **结合后的答案**（我的洞察 + 补上的报数纪律）：

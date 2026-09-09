@@ -34,7 +34,7 @@ class Engine:
     # ---------- event handlers ----------
     def on_quote(self, q: Quote) -> None:
         self.quote = q
-        self._sweep(q.ts)
+        self._sweep(q.ts) # sweep order book
         self._rebalance(q.ts, self.cfg.soft_position_limit)
         over = ((q.ts - self._over_since).total_seconds()
                 if self._over_since else None)
@@ -119,8 +119,10 @@ class Engine:
         while True:
             b, s = self.book.best_buy(), self.book.best_sell()
             if b and s:
+                # window of cross
                 win = self.strat.cross_window(b.limit, s.limit, q.bid, q.ask)
                 if win:
+                    # cross price determined by mkt mid - adjusted within the window
                     px = self.strat.cross_price(win, q.bid, q.ask)
                     qty = min(b.remaining, s.remaining)
                     self._fill(ts, b, qty, px, "AGENCY", "CROSS")
