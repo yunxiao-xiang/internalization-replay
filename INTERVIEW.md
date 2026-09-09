@@ -346,3 +346,87 @@ sweep 路径同理：它先跑 cross 分支，进入 marketable 分支时"存在
 **处理**：删除 `coverage` 参数、`book.coverage()`（heap 版）与相关调用；
 `book_dict.coverage()` 保留为深度查询，docstring 标注"引擎不使用，实测 0/457"。
 顺带消灭了 Q2 里点名的那个 O(N) CPU 悬崖——那个悬崖本来就是为一个死项付的钱。
+
+## Q8: 非 marketable 的盘中限价单能否 internalize？（v0.3）
+
+**问题**：NBBO 244.40/244.44，客户 BUY @244.43 → `_marketable` 为假（< ask），
+直接挂 book。但 `improved_price` = mid **244.42 ≤ 244.43**，合法且对客户严格更优——
+我们放过了一笔双赢成交。
+
+**为什么原设计漏掉**："marketable" 被我借用得过窄：交易所语义是"能立刻与外部
+成交"，我用它当成了"客户是否急于成交"的代理，把盘中限价单默认解读为耐心挂单者。
+但客户的限价 244.43 已明确表达"244.43 及更好都接受"，244.42 严格更好——**用"他
+可能想等更好的价"拒绝一个严格更优的成交，是替客户猜意图**。真实 midpoint venue
+（IEX D-Peg 等）正是靠给盘中挂单提供 mid 成交获客。
+
+**原路径的补偿**：这类单多数最终仍被 `_rebalance` 吃掉（公司减仓时按**客户限价**
+成交），但价格是 244.43 而非 244.42，且要等到公司恰好想减仓。
+
+**v0.3 实现**：`on_order` 的 `_marketable` 分支加 `elif` → `_offer_midpoint()`：
+若 `improved_price` 满足客户限价 ∧ `principal_quote` 给出的正是该改善价（排除
+touch 分支）→ 成交；否则照常挂单。无 route 腿。
+
+**调用计数（按 CLAUDE.md 新规矩必做）**：199 次调用 → **13 笔成交、9,000 股**。
+关键的诚实发现：**13 笔全部是 2¢ 点差、客户限价恰好等于 mid** ⇒ 相对客户自己
+限价的改善是 **$0.00**，客户得到的是"立刻成交"而非更好的价；相对 touch 则是 +1¢。
+我举的 4¢ 例子（limit 244.43 / mid 244.42）当天一次也没出现。
+
+**全天影响（v0.2 → v0.3）**：P&L $15,078 → **$15,307**；客户改善 $1,935 → **$2,013**；
+成交股数 477,100 → 478,100（IOC 取消 −1,000）；对冲 17 → 19 笔。
+
+**风险（必须一并说）**：这会放大内部化量与逆向选择敞口——耐心挂单者往往比
+marketable 单更 informed（他们在选价而不是抢时间）。生产上应配 markout 分层而非
+无差别打开。与 v0.1 的方向恰好相反：v0.1 收紧接单，v0.3 放宽接单。
+
+### 具体数据例子：一个 order 事件与一个 quote 事件的完整触发链
+
+**A. Order 事件——ORD-00004（真实数据，v0.3 新增路径）**
+到达 09:31:20.121，BUY 100 LIMIT @244.85；此刻 NBBO **244.84/244.86**（2¢），
+公司仓位 **−300**。
+
+```
+merge_events                     # ≤09:31:20.121 的 quote 已全部先行处理
+└─ Engine.on_order(o)
+   ├─ _try_cross(o, ts)          # book.best_sell() → None（无对手方）→ 立即返回
+   ├─ _marketable(o)             # 244.85 < ask 244.86 → False
+   ├─ _offer_midpoint(o, ts)     # ← v0.3 新分支
+   │   ├─ improved_price("BUY", 24484, 24486) = ceil(mid) = 244.85
+   │   ├─ 244.85 ≤ limit 244.85 ✓（恰好等于，非严格更优）
+   │   ├─ principal_quote(o, −300, ts, ...) → (100, 244.85)
+   │   │     spread 2 ≥ 2 ✓ / 未过 15:55 ✓
+   │   │     hard_cap = −300+10,000 = 9,700；room = −300+6,000 = 5,700
+   │   │     qty = min(100, 9,700, 5,700) = 100
+   │   └─ _fill(ts, o, 100, 244.85, PRINCIPAL, INTERNAL)
+   │        ├─ 断言 24484 ≤ 24485 ≤ 24486 ✓；买价 ≤ 限价 ✓；0 < 100 ≤ 100 ✓
+   │        ├─ position −300 → −400；cash += 100 × 244.85
+   │        └─ Reporter.record_fill(... nbbo_bid=244.84, nbbo_ask=244.86)
+   ├─ o.remaining == 0 → 不挂 book、不取消
+   ├─ _rebalance(ts, 6000)       # |−400| ≤ 6,000 → 首行 return（空转）
+   └─ _track_inventory_age(ts)   # |−400| ≤ bleed_trigger 4,000 → _over_since = None
+```
+客户结果：立刻全成 @244.85，比 route（ask 244.86）好 1¢；原版本下这单会挂进
+book 等行情。
+
+**B. Quote 事件——09:45:00.001 的 tick（触发 bleed hedge）**
+新 NBBO **244.51/244.52**（1¢），进入前公司仓位 **−5,900**（上午空头累积）。
+
+```
+Engine.on_quote(q)
+├─ self.quote = q               # NBBO 快照替换（O(1)，引擎只持有这一条）
+├─ _sweep(q.ts)                 # while: best_buy/best_sell peek
+│    ├─ cross 分支：无重叠（Q6 证明其不可达）
+│    ├─ b.limit ≥ ask? / s.limit ≤ bid? 均否
+│    └─ return（安静 tick，摊还 O(1)）
+├─ _rebalance(q.ts, 6000)       # |−5,900| ≤ 6,000 → return（未破软限）
+├─ bleed_target(spread=1, pos=−5900, over_secs=…)
+│    ├─ |−5,900| > bleed_trigger 4,000 ✓
+│    └─ spread 1 ≤ cheap_spread_max 1 ✓ → 返回 target = 4,000（触发器 A）
+├─ _rebalance(q.ts, 4000)       # excess = 5,900 − 4,000 = 1,900
+│    ├─ 先找 resting SELL：best_sell().limit ≤ ask? 否（无便宜卖单）→ break
+│    └─ _firm_trade(ts, "BUY", 1900, 244.52)   # 市场回补，付半点差 0.5¢/股
+│         ├─ position −5,900 → −4,000；cash −= 1,900 × 244.52
+│         └─ Reporter.record_firm_trade(... position_after=−4,000)
+└─ _track_inventory_age(q.ts)   # |−4,000| ≤ 4,000 → _over_since = None（计时器复位）
+```
+这是当天 19 笔对冲中最大的一笔，也是"挑最便宜的窗口动手"的实证：spread 恰为 1¢
+（全天最低），对冲成本 0.5¢/股 vs v0 时代被迫对冲的 1.8¢/股。

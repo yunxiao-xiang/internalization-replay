@@ -50,6 +50,8 @@ class Engine:
         # execute the marketable portion
         if o.remaining and self._marketable(o):
             self._execute_marketable(o, o.ts)
+        elif o.remaining:
+            self._offer_midpoint(o, o.ts)   # inside-the-spread limit: mid may beat it
         if o.remaining:
             if o.tif == "IOC":
                 self._close_order(o, "CANCELLED")
@@ -109,6 +111,20 @@ class Engine:
         if o.remaining:
             px = q.ask if o.side == "BUY" else q.bid
             self._fill(ts, o, o.remaining, px, "AGENCY", "MARKET")
+
+    def _offer_midpoint(self, o: Order, ts: datetime) -> None:
+        """v0.3: a non-marketable limit resting inside the spread can still be
+        filled as principal when the improved price beats its own limit (buy
+        limit 244.43 with NBBO 244.40/244.44 fills at mid 244.42). Strictly
+        better than the client's own instruction, and better than the fill they
+        would otherwise wait for. No route leg: the residual rests as before."""
+        q = self.quote
+        px = self.strat.improved_price(o.side, q.bid, q.ask)
+        if (px > o.limit) if o.side == "BUY" else (px < o.limit):
+            return                       # mid is worse than the client's limit
+        qty, quoted = self.strat.principal_quote(o, self.position, ts, q.bid, q.ask)
+        if qty and quoted == px:         # only the improved-price branch, never touch
+            self._fill(ts, o, qty, px, "PRINCIPAL", "INTERNAL")
 
     def _sweep(self, ts: datetime) -> None:
         """Re-evaluate resting orders against the new NBBO: cross resting
