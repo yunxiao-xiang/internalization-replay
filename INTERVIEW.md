@@ -224,3 +224,23 @@ out instead of a hard cutoff rejecting profitable flow along with it."
   （skew、vol-band），并积累多日 markout，显著后才把回归溢价计入期望。
 
 **模板**：E(edge) + E(drift) ± σ(drift)，尾部 = band × 极端路径，最后一句 run/no-run。
+
+## Q5-补充: σ(drift) 的推导与精确计算
+
+**公式**：drift = ∫pos·dP；鞅 + 仓位与未来增量独立的假设下
+σ(drift) = σ_P(daily, RV口径) × pos_RMS，其中 pos_RMS = √(∫pos²dt / T)。
+
+**今天的数据（v0.2）**：
+- σ_P：tape 逐 tick mid 增量平方和开根（realized variance）= $1.50/天；
+- pos_RMS = 2,203 股（高于时间加权平均 |pos| 1,456——RMS 加重 4–6k 时段）；
+- **σ(drift) = $3,311**。我口算的 ±$5k 用了 1%×$244≈$2.5 的年化口径猜日波动，
+  RV 口径只有 $1.50（当天 $3.2 高低差里有趋势段，非扩散）→ 报数应用 RV 口径。
+
+**关键读数**：今天 drift $14,699 = **4.4σ**。两种解释并列：
+1. 真尾部（被设计的日子，band 钉满恰逢单边）；
+2. 公式的独立性假设被违反——markout 证据（internalized −4.25¢）表明仓位与
+   后续回归正相关，该相关既抬高 E[drift] 也使 "4.4σ" 高估异常度。
+
+**金句**：同一个相关性，在期望里叫流动性提供溢价，在方差公式里叫假设失效。
+
+**修正后的 Q5 报数**：E ≈ +$400，1σ ≈ ±$3.3k，尾部 ≈ band 6,000 × 极端路径 ≈ ±$15k。
