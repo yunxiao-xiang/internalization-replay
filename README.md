@@ -34,3 +34,14 @@ test_strategy.py unit tests for the policy layer
 ```
 
 See `DESIGN.md` for the architecture and internalization strategy write-up.
+
+## Data
+
+The two input CSVs are not in this repository — they belong to the exercise that
+prompted this work. Put your own files at `data/aapl_quotes_20260817.csv` and
+`data/client_orders_20260817.csv`; columns resolve by header name, so order does
+not matter. `out/dashboard.html` is excluded for the same reason (it embeds the
+full quote tape); regenerate it with `python3 make_dashboard.py`.
+
+This branch is the **submitted snapshot**: the v0 strategy with line-by-line
+comments. The `main` branch carries the later v0.1–v0.3 experiments.
