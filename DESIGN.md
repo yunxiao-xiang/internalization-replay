@@ -80,10 +80,14 @@ fills, −$385 of hedge costs at 1.8¢/share) and +$14,236 of inventory drift,
 $11.4k of it in the 11:00 selloff hour when the book happened to be short.
 Midpoint pricing hands the client nearly the whole spread, so the profit is
 the position sitting on the right side of an engineered day: luck, which the
-band only bounds. Wide spreads cut both ways, most attractive to internalize
-exactly when the market trends and the exit costs half that same spread.
-Break-even: internalize only if expected capture from future offsetting flow
-exceeds the probability-weighted hedge cost plus expected adverse move.
+band only bounds. Wide spreads are analytically two-sided: most attractive to
+internalize exactly when the market trends and the exit costs half that same
+spread. This day's markouts fall on the compensation side of that trade —
+risk-adjusted P&L rises monotonically with spread, +212¢/share at 6¢ over 30
+minutes against −15¢ at 1¢ — but one session cannot settle which regime
+dominates. Break-even either way: internalize only if expected capture from
+future offsetting flow exceeds the probability-weighted hedge cost plus
+expected adverse move.
 
 **Trade-offs accepted.** No trend prediction (fitting a signal to one
 simulated day is curve-fitting; the band bounds the damage). No volatility
