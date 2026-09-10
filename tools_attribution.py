@@ -31,7 +31,7 @@ with open(config.FIRM_TRADES_CSV) as f:
         trades.append((ts, firm_qty, to_cents(r["price"])))
 trades.sort(key=lambda t: t[0])
 
-def mid_at(ts):
+def mid_at(ts):   # prevailing mid: the fair value this trade is judged against
     i = bisect_right(qts, ts)
     q = quotes[i - 1]
     return (q.bid + q.ask) / 2
@@ -44,13 +44,13 @@ hourly = {}
 for ts, fq, px in trades:
     m = mid_at(ts)
     if prev_mid is not None:
-        drift += pos * (m - prev_mid)
-    e = (m - px) * fq
+        drift += pos * (m - prev_mid)   # inventory P&L over the interval just ended
+    e = (m - px) * fq               # execution P&L vs fair value at that instant
     edge += e
     h = ts.hour
     hourly.setdefault(h, [0.0, 0.0])
     hourly[h][0] += e
-    pos += fq
+    pos += fq                       # position updated after marking the interval
     prev_mid = m
 # attribute drift to hour of the *later* trade for simplicity
 prev_mid = None

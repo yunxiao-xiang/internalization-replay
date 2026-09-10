@@ -16,14 +16,15 @@ FIRM_COLUMNS = ["trade_id", "timestamp", "side", "quantity", "price",
 
 class Reporter:
     def __init__(self):
-        self.fills: list[dict] = []
-        self.firm_trades: list[dict] = []
+        self.fills: list[dict] = []                 # client fills, in execution order
+        self.firm_trades: list[dict] = []            # the firm's own hedges, kept separate
         self.closes: list[tuple[Order, int]] = []   # (order, unfilled shares)
-        self._fill_seq = 0
-        self._trade_seq = 0
+        self._fill_seq = 0                           # F-00001, F-00002, ...
+        self._trade_seq = 0                          # H-0001, H-0002, ...
 
     def record_fill(self, ts: datetime, order: Order, qty: int, px: int,
                     capacity: str, venue: str, q: Quote) -> None:
+        """One row per client fill; the NBBO is stamped on it as evidence."""
         self._fill_seq += 1
         self.fills.append({
             "fill_id": f"F-{self._fill_seq:05d}",
@@ -35,13 +36,14 @@ class Reporter:
             "price": fmt_price(px),
             "capacity": capacity,
             "venue": venue,
-            "nbbo_bid": fmt_price(q.bid),
+            "nbbo_bid": fmt_price(q.bid),            # compliance evidence on every row
             "nbbo_ask": fmt_price(q.ask),
-            "_px": px, "_bid": q.bid, "_ask": q.ask,
+            "_px": px, "_bid": q.bid, "_ask": q.ask,  # underscore keys: cents, not written to CSV
         })
 
     def record_firm_trade(self, ts: datetime, side: str, qty: int, px: int,
                           position_after: int, q: Quote) -> None:
+        """The firm's own hedges: a separate blotter, never mixed with client fills."""
         self._trade_seq += 1
         self.firm_trades.append({
             "trade_id": f"H-{self._trade_seq:04d}",
@@ -55,6 +57,7 @@ class Reporter:
         })
 
     def record_close(self, order: Order, leaves: int) -> None:
+        """Terminal state of an order; leaves = shares that never traded."""
         self.closes.append((order, leaves))
 
     # ---------- outputs ----------
@@ -62,9 +65,9 @@ class Reporter:
                       position: int, cash: int, orders: list[Order]) -> str:
         """Write the three output files; paths come from the caller (config.py)."""
         for p in (fills_csv, firm_csv, summary_txt):
-            os.makedirs(os.path.dirname(os.fspath(p)) or ".", exist_ok=True)
+            os.makedirs(os.path.dirname(os.fspath(p)) or ".", exist_ok=True)   # out/ may not exist
         with open(fills_csv, "w", newline="") as f:
-            w = csv.DictWriter(f, FILL_COLUMNS, extrasaction="ignore")
+            w = csv.DictWriter(f, FILL_COLUMNS, extrasaction="ignore")   # drops the _px/_bid keys
             w.writeheader()
             w.writerows(self.fills)
         with open(firm_csv, "w", newline="") as f:
@@ -77,13 +80,13 @@ class Reporter:
         return summary
 
     def summary(self, position: int, cash: int, orders: list[Order]) -> str:
-        shares = defaultdict(int)
+        shares = defaultdict(int)                    # (capacity, venue) -> shares
         improvement = 0  # cents * shares, client fills vs the same-side touch
-        filled_qty: dict[str, int] = defaultdict(int)
+        filled_qty: dict[str, int] = defaultdict(int) # per order, to classify dispositions
         for f in self.fills:
             shares[(f["capacity"], f["venue"])] += f["quantity"]
             filled_qty[f["order_id"]] += f["quantity"]
-            if f["venue"] in ("INTERNAL", "CROSS"):
+            if f["venue"] in ("INTERNAL", "CROSS"):   # routed fills pay the touch: zero improvement
                 if f["side"] == "BUY":
                     improvement += (f["_ask"] - f["_px"]) * f["quantity"]
                 else:
@@ -94,16 +97,16 @@ class Reporter:
         for o in orders:
             done = filled_qty.get(o.order_id, 0)
             assert done + (o.quantity - done) == o.quantity
-            if o.closed_as is None:
+            if o.closed_as is None:                  # never cancelled or expired
                 assert done == o.quantity, f"open order at EOD: {o.order_id}"
                 disposition["FILLED"] += 1
             else:
                 key = o.closed_as + ("_PARTIAL_FILL" if done else "")
                 disposition[key] += 1
         for o, leaves in self.closes:
-            unfilled_shares[o.closed_as] += leaves
+            unfilled_shares[o.closed_as] += leaves   # split EXPIRED vs CANCELLED
 
-        total_order_qty = sum(o.quantity for o in orders)
+        total_order_qty = sum(o.quantity for o in orders)   # the accounting identity below
         total_filled = sum(filled_qty.values())
         total_unfilled = sum(unfilled_shares.values())
         firm_qty = sum(t["quantity"] for t in self.firm_trades)

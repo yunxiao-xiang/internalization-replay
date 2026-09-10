@@ -4,9 +4,9 @@ from datetime import datetime, time
 from internalizer.models import Order
 from internalizer.strategy import Config, Strategy
 
-S = Strategy(Config())
-TS = datetime(2026, 8, 17, 10, 0)
-LATE = datetime(2026, 8, 17, 15, 56)
+S = Strategy(Config())        # default policy: the numbers in config.STRATEGY
+TS = datetime(2026, 8, 17, 10, 0)    # mid-session: new risk allowed
+LATE = datetime(2026, 8, 17, 15, 56) # past no_new_risk_after: reduce-only
 
 
 def order(side, qty=1000, limit=None, otype=None):

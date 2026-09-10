@@ -18,7 +18,7 @@ def make_engine():
     return Engine(Strategy(Config()), Reporter())
 
 
-def quote(bid, ask, sec=0):
+def quote(bid, ask, sec=0):        # sec advances the clock between ticks        # sec advances the clock between ticks
     return Quote(D.replace(second=sec), "AAPL", bid, 100, ask, 100)
 
 

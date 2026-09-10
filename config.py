@@ -7,7 +7,7 @@ from pathlib import Path
 
 from internalizer.strategy import Config as StrategyConfig
 
-BASE_DIR = Path(__file__).resolve().parent
+BASE_DIR = Path(__file__).resolve().parent   # repo root: paths work from anywhere
 DATA_DIR = BASE_DIR / "data"
 OUT_DIR = BASE_DIR / "out"
 
@@ -25,7 +25,7 @@ DASHBOARD_TEMPLATE = BASE_DIR / "dashboard_template.html"
 DASHBOARD_HTML = OUT_DIR / "dashboard.html"
 
 # session
-SESSION_OPEN = datetime(2026, 8, 17, 9, 30)
+SESSION_OPEN = datetime(2026, 8, 17, 9, 30)   # t=0 for the dashboard timeline
 
 # risk / strategy parameters (principal book limits, pricing threshold, close-down)
 STRATEGY = StrategyConfig(

@@ -19,8 +19,10 @@ from internalizer.strategy import Strategy
 def merge_events(quotes, orders):
     """Single time-ordered stream; a quote ties before an order at the same
     timestamp so the order sees the quote 'at or before now'."""
-    qi = oi = 0
+    qi = oi = 0                                  # both inputs are already sorted -> O(n) merge
     while qi < len(quotes) or oi < len(orders):
+        # `<=` is the tie-break that makes lookahead impossible: every quote at or
+        # before an order's timestamp is dispatched before that order
         if oi >= len(orders) or (qi < len(quotes) and quotes[qi].ts <= orders[oi].ts):
             yield "Q", quotes[qi]
             qi += 1
@@ -48,17 +50,17 @@ def main(argv: list[str]) -> int:
         fills_csv, firm_csv, summary_txt = (
             config.FILLS_CSV, config.FIRM_TRADES_CSV, config.SUMMARY_TXT)
 
-    quotes = load_quotes(quotes_path)
-    orders = load_orders(orders_path)
+    quotes = load_quotes(quotes_path)            # ~52k ticks
+    orders = load_orders(orders_path)            # 500 client orders
 
-    reporter = Reporter()
-    engine = Engine(Strategy(config.STRATEGY), reporter)
+    reporter = Reporter()                        # collects fills, hedges, terminal states
+    engine = Engine(Strategy(config.STRATEGY), reporter)   # policy injected, not hardcoded
     for kind, ev in merge_events(quotes, orders):
         if kind == "Q":
-            engine.on_quote(ev)
+            engine.on_quote(ev)                  # refresh NBBO, re-evaluate the book
         else:
-            engine.on_order(ev)
-    engine.on_close()
+            engine.on_order(ev)                  # run the decision waterfall
+    engine.on_close()                            # 16:00: flatten, expire, assert flat
 
     summary = reporter.write_outputs(fills_csv, firm_csv, summary_txt,
                                      engine.position, engine.cash, orders)

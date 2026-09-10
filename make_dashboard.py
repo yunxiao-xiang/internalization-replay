@@ -21,6 +21,7 @@ from main import merge_events
 
 
 def ms(ts: datetime) -> int:
+    """Milliseconds since 09:30 — the dashboard's single time axis."""
     return int((ts - config.SESSION_OPEN).total_seconds() * 1000)
 
 
@@ -28,6 +29,8 @@ def main() -> None:
     quotes = load_quotes(config.QUOTES_CSV)
     orders = load_orders(config.ORDERS_CSV)
 
+    # instrument the book so the dashboard knows when each order started resting;
+    # the engine itself never records this, and patching beats changing the engine
     rest_start: dict[str, int] = {}
     orig_add = OrderBook.add
 
@@ -43,7 +46,7 @@ def main() -> None:
             (engine.on_quote if kind == "Q" else engine.on_order)(ev)
         engine.on_close()
     finally:
-        OrderBook.add = orig_add
+        OrderBook.add = orig_add        # always restore, even if the replay raised
 
     fills = [
         [ms(datetime.fromisoformat(f["timestamp"])), f["order_id"], f["client_id"],
@@ -64,7 +67,7 @@ def main() -> None:
     for oid, t0 in rest_start.items():
         o = by_id[oid]
         cum, last = filled_at.get(oid, (0, 0))
-        rest_end[oid] = last if cum >= o.quantity else 23_400_000
+        rest_end[oid] = last if cum >= o.quantity else 23_400_000   # else: alive to the close
 
     orders_js = [
         [o.order_id, ms(o.ts), o.client_id, o.side[0], o.order_type[0],
@@ -79,13 +82,13 @@ def main() -> None:
     ]
     quotes_js = [[ms(q.ts), q.bid, q.ask, q.bid_size, q.ask_size] for q in quotes]
 
-    payload = json.dumps(
+    payload = json.dumps(          # arrays not objects: ~3x smaller for 52k quotes
         {"quotes": quotes_js, "orders": orders_js, "fills": fills, "firm": firm_js},
         separators=(",", ":"))
 
     with open(config.DASHBOARD_TEMPLATE) as f:
         html = f.read()
-    out = html.replace("__DATA_JSON__", payload)
+    out = html.replace("__DATA_JSON__", payload)   # single-file page, no fetch at runtime
     config.DASHBOARD_HTML.parent.mkdir(exist_ok=True)
     with open(config.DASHBOARD_HTML, "w") as f:
         f.write(out)

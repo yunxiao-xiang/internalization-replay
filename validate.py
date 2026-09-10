@@ -30,9 +30,9 @@ def fail(msg: str) -> None:
 
 
 def main() -> int:
-    quotes = load_quotes(config.QUOTES_CSV)
-    orders = {o.order_id: o for o in load_orders(config.ORDERS_CSV)}
-    qts = [q.ts for q in quotes]
+    quotes = load_quotes(config.QUOTES_CSV)      # re-read the raw tape, not the engine's copy
+    orders = {o.order_id: o for o in load_orders(config.ORDERS_CSV)}   # id -> original order
+    qts = [q.ts for q in quotes]                 # ascending -> bisect key
     # all quotes sharing an exact timestamp (engine may act on any of them)
     at_ts: dict[datetime, list] = {}
     for q in quotes:
@@ -54,12 +54,12 @@ def main() -> int:
         rb, ra = to_cents(row["nbbo_bid"]), to_cents(row["nbbo_ask"])
         o = orders[row["order_id"]]
 
-        if prev_ts and ts < prev_ts:
+        if prev_ts and ts < prev_ts:             # replay must never go backwards
             fail(f"{row['fill_id']} out of time order")
         prev_ts = ts
 
         # 1. price within the recorded NBBO and the client's limit
-        if not (rb <= px <= ra):
+        if not (rb <= px <= ra):                 # the hard regulatory constraint
             fail(f"{row['fill_id']} price {px} outside recorded NBBO {rb}/{ra}")
         if o.limit is not None:
             if o.side == "BUY" and px > o.limit:
@@ -70,22 +70,23 @@ def main() -> int:
         # 2. recorded NBBO must be the prevailing quote (the last at or before
         #    the fill time, or any quote sharing its exact timestamp when the
         #    tape prints several in one millisecond)
-        i = bisect_right(qts, ts)
+        i = bisect_right(qts, ts)                # last quote at or before the fill
         if i == 0:
             fail(f"{row['fill_id']} before first quote")
         prevailing = quotes[i - 1]
+        # several quotes can share one millisecond; any of them is a legitimate match
         candidates = [prevailing] + at_ts.get(ts, [])
         if not any(q.bid == rb and q.ask == ra for q in candidates):
             fail(f"{row['fill_id']} recorded NBBO {rb}/{ra} not on tape at {ts}")
 
         # 3. accounting
         filled[o.order_id] = filled.get(o.order_id, 0) + qty
-        if filled[o.order_id] > o.quantity:
+        if filled[o.order_id] > o.quantity:      # more shares printed than the client asked for
             fail(f"{o.order_id} over-filled")
 
         # 4. firm side of principal fills
-        if row["capacity"] == "PRINCIPAL":
-            if o.side == "BUY":
+        if row["capacity"] == "PRINCIPAL":       # rebuild the firm's book independently
+            if o.side == "BUY":                  # client buys -> firm sells
                 position -= qty
                 cash += qty * px
             else:
@@ -100,7 +101,7 @@ def main() -> int:
         prevailing = quotes[i - 1]
         candidates = [prevailing] + at_ts.get(ts, [])
         # 5. firm trades pay the spread: buy at ask, sell at bid
-        if row["side"] == "BUY":
+        if row["side"] == "BUY":                 # hedges pay the touch, never inside it
             if not any(q.ask == px for q in candidates):
                 fail(f"{row['trade_id']} firm buy not at prevailing ask")
             position += qty
@@ -111,16 +112,16 @@ def main() -> int:
             position -= qty
             cash += qty * px
 
-    if position != 0:
+    if position != 0:                            # independent proof the firm ended flat
         fail(f"reconstructed EOD position {position} != 0")
 
     with open(config.SUMMARY_TXT) as f:
         summary = f.read()
-    pnl = f"${cash / 100:,.2f}"
-    if pnl not in summary:
+    pnl = f"${cash / 100:,.2f}"                  # recomputed from the CSVs alone
+    if pnl not in summary:                       # must agree with what the engine reported
         fail(f"recomputed P&L {pnl} not found in summary")
 
-    cross = [r for r in fills if r["venue"] == "CROSS"]
+    cross = [r for r in fills if r["venue"] == "CROSS"]   # every cross prints two legs
     if len(cross) % 2 != 0:
         fail("cross fills must come in pairs")
 
