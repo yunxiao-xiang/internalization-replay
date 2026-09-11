@@ -3,6 +3,9 @@
 Covers the compliance case where the market moves through a resting order's
 limit: the fill must come at or inside the new NBBO (price improvement),
 never at the now-outside limit price.
+
+Also covers the arrival-time midpoint offer: a limit inside the spread is
+internalized when the improved price satisfies it, and rests otherwise.
 """
 from datetime import datetime
 
@@ -63,6 +66,8 @@ def test_market_through_resting_sell_limit_fills_inside_new_nbbo():
 
 
 def test_inside_spread_buy_limit_fills_at_midpoint_on_arrival():
+    # NBBO 244.40/244.44, buy limit 244.43: not marketable, but ceil(mid)
+    # 244.42 already beats the limit, so the firm fills it instead of resting it
     eng = make_engine()
     eng.on_quote(quote(24440, 24444))
     o = Order("O3", D, "C1", "AAPL", "BUY", "LIMIT", 500, 24443, "DAY")
@@ -75,6 +80,7 @@ def test_inside_spread_buy_limit_fills_at_midpoint_on_arrival():
 
 
 def test_inside_spread_sell_limit_at_exact_midpoint_fills_on_arrival():
+    # 2c spread, limit sitting exactly on mid: the firm fills at the limit itself
     eng = make_engine()
     eng.on_quote(quote(24484, 24486))
     o = Order("O4", D, "C1", "AAPL", "SELL", "LIMIT", 100, 24485, "DAY")
@@ -85,6 +91,7 @@ def test_inside_spread_sell_limit_at_exact_midpoint_fills_on_arrival():
 
 
 def test_inside_spread_limit_rests_when_midpoint_misses_its_limit():
+    # buy limit 244.41 sits below ceil(mid) 244.42: no fill, rests as before
     eng = make_engine()
     eng.on_quote(quote(24440, 24444))
     o = Order("O5", D, "C1", "AAPL", "BUY", "LIMIT", 500, 24441, "DAY")
@@ -94,6 +101,8 @@ def test_inside_spread_limit_rests_when_midpoint_misses_its_limit():
 
 
 def test_inside_spread_residual_rests_when_position_limit_truncates():
+    # firm short 9,800: room for 200 before -10,000; the other 300 rest (no route leg)
+    # (soft limit pinned to the hard limit so the rebalancer stays out of the way)
     eng = Engine(Strategy(Config(soft_position_limit=10_000)), Reporter())
     eng.on_quote(quote(24440, 24444))
     eng.position = -9_800
@@ -104,6 +113,7 @@ def test_inside_spread_residual_rests_when_position_limit_truncates():
 
 
 def test_inside_spread_limit_rests_when_policy_declines_new_risk():
+    # 15:56 and flat: reduce-only window, so no principal fill even though mid meets the limit
     late = D.replace(hour=15, minute=56)
     eng = make_engine()
     eng.on_quote(Quote(late, "AAPL", 24440, 100, 24444, 100))
