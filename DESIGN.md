@@ -100,21 +100,21 @@ book is pinned.
 Each version replays the same day. Edge and hedge cost are measured against
 the contemporaneous mid; drift is P&L minus edge.
 
-| | v0 | v0.1 | v0.2 |
-|---|---|---|---|
-| Internalized shares | 243,300 | 222,000 | 218,300 |
-| Routed shares | 232,200 | 253,500 | 257,200 |
-| Market hedges | 20 (21,300 sh) | 0 | 17 (16,300 sh) |
-| Client fill edge | $545.5 | $503.5 | $460.5 |
-| Hedge cost | −$385.0 | $0.0 | −$81.5 |
-| Execution edge | $160.5 | $503.5 | $379.0 |
-| Inventory drift | $14,235.5 | $14,235.5 | $14,699.0 |
-| Realized P&L | $14,396 | $14,739 | $15,078 |
-| Client price improvement | $2,216 | $1,873 | $1,935 |
-| Max abs position | 8,600 | 6,000 | 6,000 |
-| Minutes above 4,000 sh | 60 | 60 | 18 |
-| Minutes at ±6,000 sh | 15 | 15 | 5 |
-| σ(drift) | $3.8k | $3.8k | $3.3k |
+| | v0 | v0.1 | v0.2 | v0.3 |
+|---|---|---|---|---|
+| Internalized shares | 243,300 | 222,000 | 218,300 | 228,300 |
+| Routed shares | 232,200 | 253,500 | 257,200 | 248,400 |
+| Market hedges | 20 (21,300 sh) | 0 | 17 (16,300 sh) | 19 (18,300 sh) |
+| Client fill edge | $545.5 | $503.5 | $460.5 | $465.5 |
+| Hedge cost | −$385.0 | $0.0 | −$81.5 | −$91.5 |
+| Execution edge | $160.5 | $503.5 | $379.0 | $374.0 |
+| Inventory drift | $14,235.5 | $14,235.5 | $14,699.0 | $14,933.0 |
+| Realized P&L | $14,396 | $14,739 | $15,078 | $15,307 |
+| Client price improvement | $2,216 | $1,873 | $1,935 | $2,013 |
+| Max abs position | 8,600 | 6,000 | 6,000 | 6,000 |
+| Minutes above 4,000 sh | 60 | 60 | 18 | 18 |
+| Minutes at ±6,000 sh | 15 | 15 | 5 | 5 |
+| σ(drift) | $3.8k | $3.8k | $3.3k | $3.4k |
 
 **v0.1: client improvement rebalanced to the principal book.** v0 sized new
 risk to the hard limit, so a fill that pushed the book past ±6,000 was
@@ -164,6 +164,28 @@ less room for 1¢ reducing flow. The premium is set by the trigger and the
 opportunity cost by the day's flow, so the two are reported separately.
 P&L rose $339 on drift: bleeding changed the position path and this day
 happened to reward it.
+
+**v0.3: midpoint offer for limits inside the spread.** A limit order that
+was not marketable used to rest on the book untouched. With the NBBO at
+244.40/244.44 and a buy limit of 244.43, the improved price is the 244.42
+mid, inside the NBBO and better than the client's own limit; declining that
+fill put a guess about the client's patience ahead of their stated price.
+v0.3 fills such an order when the improved price satisfies the limit and
+`principal_quote` quotes that same price, and rests it otherwise. On replay
+the new branch ran 199 times and filled 13 orders for 9,000 shares. All 13
+came at a 2¢ spread with the limit exactly at the mid, so the clients gained
+nothing against their own limits; what they got was an immediate fill, 1¢
+better than the touch. The 4¢ case that motivated the change never occurred
+on this day.
+
+**The cost of v0.3.** Internalization rises 10,000 shares and client
+improvement $78, while execution edge slips $5 net. The 13 midpoint fills
+earn the firm nothing, since at a 2¢ spread the improved price is the exact
+mid; other fill edge rises $5 as the position path shifts, and the larger
+book needs two more hedges costing $10. σ(drift) rises 4% with the larger
+book, and P&L rose $229, again on drift. Patient limit posters may be better
+informed than marketable flow, since they choose a price instead of racing
+for time, so in production this belongs behind per-client markout tiers.
 
 ## Assumptions
 
