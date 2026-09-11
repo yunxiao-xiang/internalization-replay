@@ -42,6 +42,7 @@ class Engine:
         target = self.strat.bleed_target(q.spread, self.position, over)
         if target is not None:
             self._rebalance(q.ts, target)
+        self._pav_adjust(q.ts)   # v0.4: trade toward flat where PAV is beyond an exit price
         self._track_inventory_age(q.ts)
 
     def on_order(self, o: Order) -> None:
@@ -58,6 +59,7 @@ class Engine:
             else:
                 self.book.add(o)
         self._rebalance(o.ts, self.cfg.soft_position_limit)
+        self._pav_adjust(o.ts)
         self._track_inventory_age(o.ts)
 
     def on_cancel(self, order_id: str, ts: datetime) -> bool:
@@ -190,6 +192,29 @@ class Engine:
                 excess -= qty
             if excess > 0:
                 self._firm_trade(ts, "BUY", excess, q.ask)
+
+    def _pav_adjust(self, ts: datetime) -> None:
+        """v0.4: trade the book toward flat whenever its position-adjusted value
+        (Delta One PAV) is beyond a price it can exit at. A resting client limit
+        inside the NBBO comes first (internalize at the client's limit), then
+        the opposite touch (execute in the market). Each trade moves PAV exactly
+        to its price, so a crossed PAV is cured with the least size and the
+        position never flips."""
+        q = self.quote
+        while self.position:
+            long = self.position > 0
+            pav = self.strat.pav(q.bid, q.ask, self.position)
+            o = self.book.best_buy() if long else self.book.best_sell()
+            if o is not None and q.bid <= o.limit <= q.ask:   # fillable at its own limit
+                qty = min(o.remaining, self.strat.pav_qty(o.limit, pav, self.position))
+                if qty:
+                    self._fill(ts, o, qty, o.limit, "PRINCIPAL", "INTERNAL")
+                    continue
+            touch = q.bid if long else q.ask
+            qty = self.strat.pav_qty(touch, pav, self.position)
+            if qty:
+                self._firm_trade(ts, "SELL" if long else "BUY", qty, touch)
+            return
 
     # ---------- booking ----------
     def _fill(self, ts: datetime, order: Order, qty: int, px: int,

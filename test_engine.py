@@ -75,6 +75,44 @@ def test_on_cancel_tombstones_resting_order():
     assert eng.position == 0 and eng.cash == 0
 
 
+def test_pav_hedges_at_the_touch_when_pav_crosses_the_bid():
+    # v0.4, bleed disabled to isolate it: long 5,000 in a 1c market puts PAV under the bid
+    eng = Engine(Strategy(Config(bleed_trigger=10**9)), Reporter())
+    eng.on_quote(quote(18998, 19002))
+    eng.position = 5000
+    eng.on_quote(quote(18999, 19000, sec=1))      # PAV 18998.875 < bid 18999
+    assert eng.position == 4000                   # sold until PAV reached the bid
+    t = eng.rep.firm_trades[-1]
+    assert (t["side"], t["quantity"], round(float(t["price"]) * 100)) == ("SELL", 1000, 18999)
+
+
+def test_pav_internalizes_a_resting_limit_it_crosses():
+    # vol 3% quadruples risk: long 4,000 puts PAV 2c under the mid, below a resting buy at 189.99
+    eng = Engine(Strategy(Config(daily_vol=0.03, bleed_trigger=10**9)), Reporter())
+    eng.on_quote(quote(18998, 19002))
+    o = Order("O1", D, "C1", "AAPL", "BUY", "LIMIT", 3000, 18999, "DAY")
+    eng.on_order(o)                               # below the 190.00 mid: no midpoint offer, rests
+    assert o.remaining == 3000
+    eng.position = 4000
+    eng.on_quote(quote(18998, 19002, sec=1))      # PAV 18998 < limit 18999: internalize at the limit
+    assert eng.position == 2000 and o.remaining == 1000   # 2,000 moves PAV exactly to 189.99
+    f = eng.rep.fills[-1]
+    assert (f["capacity"], f["venue"], f["quantity"], f["_px"]) == ("PRINCIPAL", "INTERNAL", 2000, 18999)
+    assert eng.rep.firm_trades == []              # PAV 18999 is above the 189.98 bid: no market trade
+
+
+def test_pav_never_flips_the_position():
+    # the market drops so a resting buy sits above the mid: its PAV size (9,000) would
+    # pass flat, and the fill stops at the 1,000 held
+    eng = Engine(Strategy(Config(bleed_trigger=10**9)), Reporter())
+    eng.on_quote(quote(18998, 19002))
+    o = Order("O1", D, "C1", "AAPL", "BUY", "LIMIT", 5000, 18999, "DAY")
+    eng.on_order(o)                               # rests below the 190.00 mid
+    eng.position = 1000
+    eng.on_quote(quote(18996, 19000, sec=1))      # mid 189.98: the 189.99 limit is now above it
+    assert eng.position == 0 and o.remaining == 4000
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for fn in fns:

@@ -36,6 +36,10 @@ STRATEGY = StrategyConfig(
     bleed_trigger=4_000,             # v0.2: proactive bleed fires above this, reduces to it
     cheap_spread_max=1,              # trigger A: spread <= 1c (cheapest hedge windows)
     age_limit_secs=600,              # trigger B: |pos| aged 10 min above trigger
+    daily_vol=0.015,                 # v0.4: daily vol input; PAV risk scales with (vol / 1.5%)^2
+    risk_norm_vol=0.015,             # v0.4: the vol the PAV risk normalization is defined at
+    risk_norm_qty=4_000,             # v0.4: at that vol, 4,000 shares shift PAV by...
+    risk_norm_edge_c=0.5,            # ...0.5c, so PAV reaches a 1c market's touch at 4,000 sh
 )
 
 

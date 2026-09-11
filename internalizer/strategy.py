@@ -18,6 +18,11 @@ Policy summary
 4. After no_new_risk_after (15:55) the firm stops building new inventory:
    only risk-reducing principal fills, everything else routes.
 5. Everything else routes to the market at the touch.
+6. Position-adjusted value (v0.4, the Delta One PAV): PAV = mid - risk *
+   position, with risk normalized as in d1's baseline covariance scaling. When
+   PAV is beyond a price the firm can exit at (a resting client limit, else the
+   opposite touch), the book trades there, sized to move PAV to that price and
+   never past flat.
 """
 from __future__ import annotations
 
@@ -39,6 +44,14 @@ class Config:
     bleed_trigger: int = 4_000            # shares; bleed fires above this, reduces to it
     cheap_spread_max: int = 1             # cents; trigger A when spread <= this
     age_limit_secs: int = 600             # trigger B when |pos| > trigger this long
+    # position-adjusted value (v0.4, Delta One PAV): PAV = mid - risk * position.
+    # risk is normalized like d1's baseline covariance scaling: at risk_norm_vol,
+    # holding risk_norm_qty shares shifts PAV by risk_norm_edge_c, and it scales
+    # with (daily_vol / risk_norm_vol) squared
+    daily_vol: float = 0.015              # daily return vol input (1.5%)
+    risk_norm_vol: float = 0.015          # the vol the normalization is defined at
+    risk_norm_qty: int = 4_000            # shares that shift PAV by risk_norm_edge_c
+    risk_norm_edge_c: float = 0.5         # cents of PAV shift at risk_norm_qty
 
 
 class Strategy:
@@ -122,3 +135,25 @@ class Strategy:
         if over_secs is not None and over_secs >= self.cfg.age_limit_secs:
             return self.cfg.bleed_trigger
         return None
+
+    # ---- position-adjusted value (v0.4) ----
+    def risk_value(self) -> float:
+        """Cents of PAV shift per share held: d1's risk value for a single name.
+
+        d1 scales the covariance so the baseline symbol's variance maps to a
+        target edge at a target quantity; here the baseline is risk_norm_vol,
+        so risk grows with the square of daily_vol relative to it.
+        """
+        c = self.cfg
+        return c.risk_norm_edge_c / c.risk_norm_qty * (c.daily_vol / c.risk_norm_vol) ** 2
+
+    def pav(self, bid: int, ask: int, position: int) -> float:
+        """Position-adjusted value in cents: the mid shifted against inventory,
+        so a long book values the stock lower and a short book higher."""
+        return (bid + ask) / 2 - self.risk_value() * position
+
+    def pav_qty(self, px: int, pav: float, position: int) -> int:
+        """Shares to trade at px toward flat: d1 sizing (edge / risk), which
+        moves PAV exactly to px. Capped at the position, so it never flips."""
+        edge = px - pav if position > 0 else pav - px   # long sells above PAV, short buys below
+        return max(0, min(abs(position), int(edge / self.risk_value() + 1e-6)))
