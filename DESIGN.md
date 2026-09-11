@@ -100,21 +100,21 @@ book is pinned.
 Each version replays the same day. Edge and hedge cost are measured against
 the contemporaneous mid; drift is P&L minus edge.
 
-| | v0 | v0.1 |
-|---|---|---|
-| Internalized shares | 243,300 | 222,000 |
-| Routed shares | 232,200 | 253,500 |
-| Market hedges | 20 (21,300 sh) | 0 |
-| Client fill edge | $545.5 | $503.5 |
-| Hedge cost | −$385.0 | $0.0 |
-| Execution edge | $160.5 | $503.5 |
-| Inventory drift | $14,235.5 | $14,235.5 |
-| Realized P&L | $14,396 | $14,739 |
-| Client price improvement | $2,216 | $1,873 |
-| Max abs position | 8,600 | 6,000 |
-| Minutes above 4,000 sh | 60 | 60 |
-| Minutes at ±6,000 sh | 15 | 15 |
-| σ(drift) | $3.8k | $3.8k |
+| | v0 | v0.1 | v0.2 |
+|---|---|---|---|
+| Internalized shares | 243,300 | 222,000 | 218,300 |
+| Routed shares | 232,200 | 253,500 | 257,200 |
+| Market hedges | 20 (21,300 sh) | 0 | 17 (16,300 sh) |
+| Client fill edge | $545.5 | $503.5 | $460.5 |
+| Hedge cost | −$385.0 | $0.0 | −$81.5 |
+| Execution edge | $160.5 | $503.5 | $379.0 |
+| Inventory drift | $14,235.5 | $14,235.5 | $14,699.0 |
+| Realized P&L | $14,396 | $14,739 | $15,078 |
+| Client price improvement | $2,216 | $1,873 | $1,935 |
+| Max abs position | 8,600 | 6,000 | 6,000 |
+| Minutes above 4,000 sh | 60 | 60 | 18 |
+| Minutes at ±6,000 sh | 15 | 15 | 5 |
+| σ(drift) | $3.8k | $3.8k | $3.3k |
 
 **v0.1: client improvement rebalanced to the principal book.** v0 sized new
 risk to the hard limit, so a fill that pushed the book past ±6,000 was
@@ -142,6 +142,28 @@ rejected 1¢ unwind above shows that waiting until the book is pinned fails,
 because pinned inventory and tight spreads rarely coincide. That sets up
 v0.2's bleed target: start hedging from a trigger below the band, at the
 cheapest spreads or once inventory has aged, before the book is pinned.
+
+**v0.2: bleed target.** Above a 4,000-share trigger the firm cuts inventory
+back to the trigger when (A) the spread is 1¢, where a hedge costs half a
+cent a share, or (B) the position has stayed above the trigger for 10
+minutes, realized evidence that offsetting flow is not coming. Both triggers
+read observable state only; one simulated day cannot identify a volatility
+or trend signal without lookahead. The trigger sits below the band so that a
+cheap window has time to arrive before the book is pinned. On replay trigger
+A fired 17 times and cut 16,300 shares, all hedged in the market at a 1¢
+spread with nothing taken from the resting book; trigger B never fired and
+stays as the backstop for a trend day with no cheap window. The average
+hedge cost falls to 0.50¢ a share from v0's 1.81¢, time above 4,000 from 60
+to 18 minutes, time at the band from 15 to 5, and σ(drift) by 14%.
+
+**The cost of v0.2.** Execution edge falls $124.5, in two parts. The hedge
+premium is $81.5, 16,300 shares at half a 1¢ spread, fixed once a trigger
+fires. The other $43 is client fill edge the smaller book gave up: the
+reduce branch is capped at the current position, so less inventory leaves
+less room for 1¢ reducing flow. The premium is set by the trigger and the
+opportunity cost by the day's flow, so the two are reported separately.
+P&L rose $339 on drift: bleeding changed the position path and this day
+happened to reward it.
 
 ## Assumptions
 
