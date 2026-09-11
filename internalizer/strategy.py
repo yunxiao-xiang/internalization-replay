@@ -8,10 +8,9 @@ Policy summary
 2. Internalize when the quoted spread is >= min_internalize_spread (2c): fill
    the client at the midpoint rounded one half-cent in the firm's favor, which
    still guarantees the client >= 1c improvement over the touch. New-risk size
-   is capped at room-to-the-soft-limit plus the resting book's profitable
-   offset depth (v0.1): beyond that, the fill would be hedged at the touch
-   immediately and the hedge cost exceeds the edge, so the residual routes.
-   The hard limit still bounds everything.
+   is capped at room-to-the-soft-limit (v0.1): beyond that, the fill would be
+   hedged at the touch immediately and the hedge cost exceeds the edge, so the
+   residual routes. The hard limit still bounds everything.
 3. Flow that reduces existing inventory is always welcome: filled at the
    improved midpoint when the spread allows, otherwise at the touch (the
    client does no worse than routing; the firm unwinds without paying the
@@ -69,16 +68,13 @@ class Strategy:
         return (bid + ask) // 2           # floor(mid)
 
     def principal_quote(self, order: Order, position: int, ts: datetime,
-                        bid: int, ask: int, coverage: int = 0) -> tuple[int, int]:
+                        bid: int, ask: int) -> tuple[int, int]:
         """(qty, price) the firm fills as principal; (0, 0) to decline.
 
-        `coverage` is the resting-book depth that could profitably offset the
-        fill right away (see OrderBook.coverage). New-risk size is capped at
-        room-to-the-soft-limit plus that coverage: inventory the firm can
-        carry inside the band, plus inventory it can unwind at no cost. The
-        marginal fill beyond both would be hedged at the touch immediately,
+        New risk is sized to room-to-the-soft-limit, not the hard limit: the
+        marginal fill beyond the band would be hedged at the touch right away,
         where the half-spread hedge cost exceeds the captured edge, so that
-        portion routes instead.
+        portion routes instead. The hard limit still bounds everything.
         """
         spread = ask - bid
         buy = order.side == "BUY"
@@ -90,7 +86,7 @@ class Strategy:
                         else self.cfg.hard_position_limit - position)
             room = (position + self.cfg.soft_position_limit if buy
                     else self.cfg.soft_position_limit - position)
-            qty = min(order.remaining, hard_cap, max(0, room) + coverage)
+            qty = min(order.remaining, hard_cap, max(0, room))
             if qty > 0:
                 return qty, self.improved_price(order.side, bid, ask)
 

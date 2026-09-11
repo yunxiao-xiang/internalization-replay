@@ -40,13 +40,3 @@ class OrderBook:
 
     def open_orders(self) -> list[Order]:
         return [o for o in self._open.values() if o.remaining > 0]
-
-    def coverage(self, side: str, price: int) -> int:
-        """Resting shares on `side` that could profitably offset a principal
-        fill at `price`: sells with limit <= price (the firm could buy back at
-        or below its sell price), buys with limit >= price."""
-        if side == "SELL":
-            return sum(o.remaining for _, _, o in self._sells
-                       if o.remaining > 0 and o.limit <= price)
-        return sum(o.remaining for _, _, o in self._buys
-                   if o.remaining > 0 and o.limit >= price)
