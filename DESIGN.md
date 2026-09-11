@@ -95,6 +95,35 @@ times all day, because pinned inventory and tight spreads anti-correlate —
 evidence the hedging problem is procyclical and must be solved before the
 book is pinned.
 
+## Iterations after submission
+
+**v0.1: client improvement rebalanced to the principal book.** v0 sized new
+risk to the hard limit, so a fill that pushed the book past ±6,000 was
+unwound at the touch in the same event. On those shares the firm filled the
+client at the improved price and exited against the same quote, a round trip
+that lost exactly the improvement the client received. v0.1 caps new risk at
+the room left to the soft limit and routes the rest. On replay the cap binds
+on 20 orders and routes 21,300 shares, matching v0's 20 hedges of 21,300
+shares. Firm P&L rises $343 ($385 of hedge cost saved, $42 of fill edge given
+up) and client improvement falls by the same $343. The position after every
+event is identical, so drift stays at $14,236: the gain is a transfer from
+clients to the principal book, and those clients still get the touch, the
+price routing would give them. The resting-book `coverage` term that shipped
+with v0.1 returned zero on all 457 calls, since cross-first execution
+consumes every resting order it looks for; removing it leaves the outputs
+byte-identical.
+
+**Open problem: no hedges.** v0.1 never trades with the market. Inventory
+leaves only through offsetting client flow or the close, so the book carries
+exactly v0's risk: 15 minutes pinned at the band, 60 minutes above 4,000
+shares, and σ(drift) of about $3.8k (the mid's realized daily σ of $1.50
+times a position RMS of 2,557 shares). v0's hedges only undid same-event
+overshoot; neither version reduces inventory that sits inside the band. The
+rejected 1¢ unwind above shows that waiting until the book is pinned fails,
+because pinned inventory and tight spreads rarely coincide. That sets up
+v0.2's bleed target: start hedging from a trigger below the band, at the
+cheapest spreads or once inventory has aged, before the book is pinned.
+
 ## Assumptions
 
 Routed orders and firm hedges fill fully at the touch regardless of displayed
