@@ -97,6 +97,25 @@ book is pinned.
 
 ## Iterations after submission
 
+Each version replays the same day. Edge and hedge cost are measured against
+the contemporaneous mid; drift is P&L minus edge.
+
+| | v0 | v0.1 |
+|---|---|---|
+| Internalized shares | 243,300 | 222,000 |
+| Routed shares | 232,200 | 253,500 |
+| Market hedges | 20 (21,300 sh) | 0 |
+| Client fill edge | $545.5 | $503.5 |
+| Hedge cost | −$385.0 | $0.0 |
+| Execution edge | $160.5 | $503.5 |
+| Inventory drift | $14,235.5 | $14,235.5 |
+| Realized P&L | $14,396 | $14,739 |
+| Client price improvement | $2,216 | $1,873 |
+| Max abs position | 8,600 | 6,000 |
+| Minutes above 4,000 sh | 60 | 60 |
+| Minutes at ±6,000 sh | 15 | 15 |
+| σ(drift) | $3.8k | $3.8k |
+
 **v0.1: client improvement rebalanced to the principal book.** v0 sized new
 risk to the hard limit, so a fill that pushed the book past ±6,000 was
 unwound at the touch in the same event. On those shares the firm filled the
