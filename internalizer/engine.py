@@ -41,6 +41,8 @@ class Engine:
         self._try_cross(o, o.ts)                    # riskless and improves both sides: try first
         if o.remaining and self._marketable(o):
             self._execute_marketable(o, o.ts)       # internalize what we want, route the rest
+        elif o.remaining:
+            self._offer_midpoint(o, o.ts)           # limit inside the spread: mid may already satisfy it
         if o.remaining:                             # nothing above could execute it
             if o.tif == "IOC":
                 self._close_order(o, "CANCELLED")   # IOC: immediate or nothing
@@ -86,6 +88,17 @@ class Engine:
         if o.remaining:                             # declined or truncated by the position limit
             px = q.ask if o.side == "BUY" else q.bid              # routing pays the touch
             self._fill(ts, o, o.remaining, px, "AGENCY", "MARKET")
+
+    def _offer_midpoint(self, o: Order, ts: datetime) -> None:
+        """A limit resting inside the spread can still be internalized on
+        arrival when the firm's improved price satisfies it: buy limit 244.43
+        with NBBO 244.40/244.44 fills at ceil(mid) 244.42. No route leg; any
+        residual rests as before."""
+        q = self.quote
+        qty, px = self.strat.principal_quote(o, self.position, ts, q.bid, q.ask)  # same policy as marketable flow
+        # the limit check alone keeps this off the touch: a non-marketable buy's limit is below the ask
+        if qty and (px <= o.limit if o.side == "BUY" else px >= o.limit):
+            self._fill(ts, o, qty, px, "PRINCIPAL", "INTERNAL")
 
     def _sweep(self, ts: datetime) -> None:
         """Re-evaluate resting orders against the new NBBO: cross resting
