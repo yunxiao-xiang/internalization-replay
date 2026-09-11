@@ -5,8 +5,8 @@ Client order shares:          524,000
 
 Client shares filled by capacity/venue:
   AGENCY     CROSS          1,400
-  AGENCY     MARKET       248,400
-  PRINCIPAL  INTERNAL     228,300
+  AGENCY     MARKET       244,400
+  PRINCIPAL  INTERNAL     232,300
   TOTAL                   478,100
 
 Order dispositions:
@@ -20,5 +20,5 @@ Accounting check:             filled 478,100 + unfilled 45,900 = 524,000 of 524,
 
 Firm hedge/unwind trades:     19 (18,300 shares)
 Firm end-of-day position:     0 shares
-Firm realized principal P&L:  $15,307.00
-Client price improvement:     $2,013.00 (internal + cross fills vs the touch)
+Firm realized principal P&L:  $15,083.00
+Client price improvement:     $2,190.00 (internal + cross fills vs the touch)

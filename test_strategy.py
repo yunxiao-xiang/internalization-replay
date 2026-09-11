@@ -85,6 +85,37 @@ def test_bleed_target_dual_trigger():
     assert S.bleed_target(3, 5000, over_secs=600) == 4000
 
 
+def close(a, b):
+    return abs(a - b) < 1e-9
+
+
+def test_risk_value_d1_normalization():
+    # v0.4: at the 1.5% baseline, 4,000 shares shift PAV by 0.5c; risk scales with vol squared
+    assert close(S.risk_value(), 0.5 / 4000)
+    assert close(Strategy(Config(daily_vol=0.03)).risk_value(), 4 * 0.5 / 4000)
+
+
+def test_pav_shifts_against_inventory():
+    # NBBO 244.79/244.80, mid 244.795: long 4,000 -> PAV at the bid, short 4,000 -> at the ask
+    assert close(S.pav(24479, 24480, 4000), 24479)
+    assert close(S.pav(24479, 24480, -4000), 24480)
+    assert close(S.pav(24479, 24480, 0), 24479.5)
+
+
+def test_pav_qty_moves_pav_to_the_price_and_never_flips():
+    # long 6,000 in a 1c market: PAV 24478.75 sits 0.25c under the bid -> sell 2,000
+    pav = S.pav(24479, 24480, 6000)
+    assert S.pav_qty(24479, pav, 6000) == 2000
+    assert close(S.pav(24479, 24480, 6000 - 2000), 24479)   # PAV lands exactly on the bid
+    # short 6,000: symmetric, buy 2,000 at the ask
+    assert S.pav_qty(24480, S.pav(24479, 24480, -6000), -6000) == 2000
+    # a price 1.25c above PAV would size at 10,000: capped at the 6,000 held
+    pav = S.pav(24478, 24481, 6000)                          # 24479.5 - 0.75
+    assert S.pav_qty(24480, pav, 6000) == 6000
+    # a price on the wrong side of PAV: nothing
+    assert S.pav_qty(24478, pav, 6000) == 0
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items()) if k.startswith("test_")]
     for fn in fns:
